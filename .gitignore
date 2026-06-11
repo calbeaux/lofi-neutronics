@@ -1,0 +1,18 @@
+# Standard ignores
+*~
+*.pyc
+\#*#
+.#*
+.*.swp
+*.so
+*.egg-info/
+
+# Repostiory list file for egdist
+.egdist
+*.sublime-*
+
+# Ignore all files in the build directory
+build/*
+
+# Mac stuff
+.DS_Store
