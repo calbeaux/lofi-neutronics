@@ -9,11 +9,11 @@ def _run_simulation(input_file, verbose=True, **kwargs):
 
     simulation = Simulation(input_file, verbose=verbose)
     try:
-        simulation.setUpDataContainer()
+        simulation.set_up_data_container()
         for index, state in enumerate(simulation.states):
             if verbose:
                 print(f"Running state {index}")
-            simulation.setState(index, state)
+            simulation.set_state(index, state)
             simulation.run()
 
         if verbose:
@@ -24,7 +24,9 @@ def _run_simulation(input_file, verbose=True, **kwargs):
 
 def main(input_file, verbose=True, **kwargs):
     context = mp.get_context("spawn")
-    process = context.Process(target=_run_simulation, args=(input_file, verbose), kwargs=kwargs)
+    process = context.Process(
+        target=_run_simulation, args=(input_file, verbose), kwargs=kwargs
+    )
     process.start()
 
     try:
@@ -38,6 +40,7 @@ def main(input_file, verbose=True, **kwargs):
             process.kill()
             process.join()
         raise
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Solve a problem.")

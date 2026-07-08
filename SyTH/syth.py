@@ -5,7 +5,7 @@ import ctypes
 from . import syth_raw as _raw
 
 
-class SyTH:
+class Syth:
     def __init__(self, filename: str):
         self.filename = filename
         self._initialize(filename)
@@ -31,7 +31,7 @@ class SyTH:
     def finalize(self) -> None:
         self.close()
 
-    def __enter__(self) -> "SyTH":
+    def __enter__(self) -> "Syth":
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:
@@ -44,15 +44,18 @@ class SyTH:
     def write_solution_to_input_file(self) -> None:
         _raw.syTH_writeSolutionToInputFile()
 
-    def solve_fluid_flow(self, fluid_solve_tol: float = 1e-6, delta_time: float = 0.0) -> None:
+    def solve_fluid_flow(
+        self, fluid_solve_tol: float = 1e-6, delta_time: float = 0.0
+    ) -> None:
         _raw.syTH_solveFluidFlow(fluid_solve_tol, delta_time)
 
-    def solve_mass_transport(self, fluid_solve_tol: float = 1e-6, delta_time: float = 0.0) -> None:
+    def solve_mass_transport(
+        self, fluid_solve_tol: float = 1e-6, delta_time: float = 0.0
+    ) -> None:
         _raw.syTH_solveMassTransport(fluid_solve_tol, delta_time)
 
     def set_state(self, state_index: int) -> None:
         _raw.syTH_setState(state_index)
-
 
     def set_node_power(self, node_index: int, node_power: float) -> None:
         """
@@ -64,7 +67,9 @@ class SyTH:
         """
         _raw.syTH_setNodePower(node_index, node_power)
 
-    def set_neutron_precursor_source_coupled_to_power_factor(self, factor: float) -> None:
+    def set_neutron_precursor_source_coupled_to_power_factor(
+        self, factor: float
+    ) -> None:
         """
         Sets the neutron precursor source coupled to power factor.
 
@@ -98,7 +103,6 @@ class SyTH:
             node_index,
             output_type=_raw.SRK,
         )
-
 
     def get_iterations(self) -> int:
         return self._call_with_output(_raw.syTH_getIterations, output_type=_raw.SIK)

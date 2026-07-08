@@ -1,47 +1,48 @@
 from abc import ABC, abstractmethod
 
+
 class NeutronicsStrategy(ABC):
     """
     Abstract base class for neutronics strategies.
     """
 
     @abstractmethod
-    def setSolverMethod(self, state):
+    def set_solver_method(self, state):
         """
         Sets the solver method for the neutronics strategy.
         """
         pass
 
     @abstractmethod
-    def setUpDataContainerInteractions(self, datacontainer):
+    def set_up_data_container_interactions(self, data_container):
         """
         Sets up interactions with required variables in data container.
         """
         pass
 
     @abstractmethod
-    def registerDataContainerVariables(self, datacontainer):
+    def register_data_container_variables(self, data_container):
         """
         Registers the variables required for the neutronics strategy.
         """
         pass
 
     @abstractmethod
-    def updatePower(self):
+    def update_power(self):
         """
         Updates the power in the strategy.
         """
         pass
 
-    def setCoreNodes(self, core_nodes):
+    def set_core_nodes(self, core_nodes):
         """
         Sets the core nodes for the neutronics strategy.
         """
-        self._coreNodes = core_nodes
+        self._core_nodes = core_nodes
 
     @property
     def core_volume(self):
         """
         Returns the total volume of the core.
         """
-        return sum(node.volume for node in self._coreNodes)
+        return sum(node.volume for node in self._core_nodes)

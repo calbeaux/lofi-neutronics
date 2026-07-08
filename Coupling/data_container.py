@@ -44,7 +44,7 @@ class DataContainer:
             - KeyError: if the key does not exist in the data container
             - IndexError: if the index is out of range for the key
         """
-        output = self.get(key, default_value=None) # returns None if key does not exist
+        output = self.get(key, default_value=None)  # returns None if key does not exist
         if output is None:
             raise KeyError(f"The key {key} does not exist in the data container.")
         return output
@@ -76,13 +76,15 @@ class DataContainer:
         if isinstance(key, tuple):
             key, idx = key
             if idx >= self._nmesh:
-                raise IndexError(f"The index {idx} is out of range for the data container (n = {self._nmesh}).")
+                raise IndexError(
+                    f"The index {idx} is out of range for the data container (n = {self._nmesh})."
+                )
             data = self._data.get(key, default_value)
             return data[idx]
 
         return self._data.get(key, default_value)
 
-    def getValue(self, key, idx: int) -> float:
+    def get_value(self, key, idx: int) -> float:
         """
         Returns solution variable at a location
 
@@ -95,6 +97,7 @@ class DataContainer:
         """
         assert idx < self._nmesh
         return self[key, idx]
+
 
 def check_memory_address(*attributes):
     """
