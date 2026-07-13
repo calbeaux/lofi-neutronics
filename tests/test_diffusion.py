@@ -20,7 +20,7 @@ import numpy as np
 import pytest
 from scipy.linalg import eig
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from Coupling.node import Node
 from Coupling.state import State

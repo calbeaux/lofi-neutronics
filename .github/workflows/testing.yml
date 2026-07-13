@@ -31,4 +31,4 @@ jobs:
         python -m pip install numpy scipy h5py pytest
     - name: Test with pytest
       run: |
-        pytest
+        PYTHONPATH=. pytest
