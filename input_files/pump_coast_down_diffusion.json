@@ -1,0 +1,168 @@
+{
+  "components": {
+    "pipe": {
+      "Fuel Channel": {
+        "L": 164.00,
+        "n": 41,
+        "theta": 0,
+        "R": 16.00,
+        "tag": "core"
+      },
+      "Reactor-Outlet to FF-100": {
+        "L": 184.00,
+        "Ac": 129.06958,
+        "Dh": 12.81938,
+        "R": 6.40,
+        "n": 46,
+        "theta": 90,
+        "roughness": 0.0045,
+        "Klossinlet": 2.5
+      },
+      "FF-100 to Pump Inlet": {
+        "L": 72.00,
+        "Ac": 129.06958,
+        "Dh": 12.81938,
+        "R": 6.4,
+        "n": 18,
+        "theta": 0,
+        "roughness": 0.0045
+      },
+      "Pump1": {
+        "L": 12.00,
+        "Ac": 129.06958,
+        "Dh": 12.81938,
+        "R": 6.4,
+        "n": 20,
+        "theta": -90,
+        "roughness": 0.0045
+      },
+      "Pump-Discharge to FF-101": {
+        "L": 96.00,
+        "Ac": 129.06958,
+        "Dh": 12.81938,
+        "R": 6.4,
+        "n": 24,
+        "theta": -90,
+        "roughness": 0.0045,
+        "Klossinlet": 7.0
+      },
+      "Heat Exchanger": {
+        "L": 244.00,
+        "Dh": 12.81938,
+        "R": 6.4,
+        "n": 61,
+        "theta": -90,
+        "roughness": 0.0045
+      },
+      "HX-Outlet to FF-102": {
+        "L": 276.00,
+        "Ac": 129.06958,
+        "Dh": 12.81938,
+        "R": 6.4,
+        "n": 69,
+        "theta": -180,
+        "roughness": 0.0045
+      },
+      "FF-102 to Reactor-Inlet": {
+        "L": 168.00,
+        "Ac": 129.06958,
+        "Dh": 12.81938,
+        "R": 6.4,
+        "n": 42,
+        "theta": 90,
+        "roughness": 0.0045
+      }
+    },
+    "nozzle": {
+      "Lower Plenum": {
+        "L": 20.00,
+        "R_inlet": 6.4,
+        "R_outlet": 16.0,
+        "theta": 0,
+        "n": 5,
+        "Klossinlet": 7.0
+      },
+      "Upper Plenum": {
+        "L": 20.00,
+        "R_inlet": 16.0,
+        "R_outlet": 6.4,
+        "theta": 0,
+        "n": 50,
+        "Klossinlet": 7.0
+      }
+    }
+  },
+  "controllers": {
+    "wallFunction": {
+      "heat removal": {
+        "eq": "enthalpy",
+        "value": "800",
+        "note": "kelvin"
+      }
+    },
+    "bodyForce": {
+      "pump momentum": {
+        "eq": "momentum",
+        "value": "1e5"
+      }
+    }
+  },
+  "system": {
+    "simple_loop": {
+      "loop": [
+        { "component": "FF-102 to Reactor-Inlet" },
+        { "component": "Lower Plenum" },
+        { "component": "Fuel Channel" },
+        { "component": "Upper Plenum" },
+        { "component": "Reactor-Outlet to FF-100" },
+        { "component": "FF-100 to Pump Inlet" },
+        { "component": "Pump1", "BodyForces": ["pump momentum"] },
+        { "component": "Pump-Discharge to FF-101" },
+        { "component": "Heat Exchanger", "WallFunctions": ["heat removal"] },
+        { "component": "HX-Outlet to FF-102" }
+      ],
+      "boundary_conditions": {
+        "pressure point": {
+          "boundary_type": "PressureReferenceBC",
+          "surface": 12,
+          "value": 149616.2
+        }
+      },
+      "fluid": "FLiBe"
+    }
+  },
+  "states": [
+    {},
+    {"transient": {
+                "time_duration": 25.00,
+                "time_step": 0.001,
+                "scheme": "BDF1",
+                "save_all_data": false
+      },
+      "bodyForce": {
+          "pump momentum": "5e3 * exp(-t/5)"
+      }
+    }
+    ],
+  "units": {
+    "length": "cm",
+    "time": "s",
+    "pressure": "pa",
+    "massFlowRate": "kg/s",
+    "power": "w",
+    "enthalpy": "j/kg",
+    "temperature": "K"
+  },
+  "options": {
+    "mpact_coupled": false,
+    "neutron_precursor_drift": true,
+    "auto_nozzle_length": 1e-3,
+    "lofi_neutronics_coupled": true
+  },
+    "neutronics": {
+    "type": "diffusion",
+    "core_nodes": ["Fuel Channel"],
+    "beta_effective": 0.006502,
+    "initial_power": 1e6
+  }
+}

@@ -14,10 +14,8 @@ class Diffusion(NeutronicsStrategy):
         self._substeps = substep
         self._beta = beta
         self._steady_state = True
-        self._enthalpy = None
-        self._neutron_population = None
-        self._precursor_groups = None
-        self._density = None
+        self._temperature = None
+        self._precursor_source = None
         self._power = None
         self._reaction_rate = None
         self.sigma_fission = None
@@ -40,30 +38,11 @@ class Diffusion(NeutronicsStrategy):
         return self.solver_strategy
 
     def set_up_data_container_interactions(self, data_container):
-        self._precursor_groups = [
-            data_container[f"{self._data_manager.variable_name}_{i}"]
-            for i in range(self._data_manager.n_groups)
-        ]
-        self._enthalpy = data_container["enthalpy"]
-        self._density = data_container["density"]
+        self._temperature = data_container["temperature"]
+        self._precursor_source = data_container["precursor_source"]
 
     def register_data_container_variables(self, data_container):
-        surfaces = []
-        nodes = []
-        for node in self._core_nodes:
-            surfaces.append(node.in_surfaces[0].index)
-            surfaces.append(node.out_surfaces[0].index)
-            nodes.append(node.index)
-        self._neutron_population = data_container.register("neutron_population", 1e8)
-        self._reaction_rate = data_container.register("reaction_rate", 1e8)
-        self._power = data_container.register("power", 1e8)
-        for i in range(self._mesh.n_connections):
-            if i not in surfaces:
-                self._neutron_population[i] = 0.0
-        for i in range(self._mesh.n_nodes):
-            if i not in nodes:
-                self._reaction_rate[i] = 0.0
-                self._power[i] = 0.0
+        self._power = data_container.register("power", 0.0)
 
     def get_xs(self, node):
         class CrossSections:
@@ -120,7 +99,7 @@ class Diffusion(NeutronicsStrategy):
         def th_kappa_fission(temperature):
             return 180 - 0.03 * (temperature - 300)
 
-        fluid_temp = self._fluid_property.temperature(node.cell_average(self._enthalpy))
+        fluid_temp = self._temperature[node.index]
         fast_xs = CrossSections(
             fast_sigma_transport(fluid_temp),
             fast_sigma_absorption(fluid_temp),
@@ -139,26 +118,11 @@ class Diffusion(NeutronicsStrategy):
         )
         return XSSet(fast_xs, th_xs)
 
-    def precursor_sum(self, node):
-        precursor_sum = 0.0
-        for index, group in enumerate(self._precursor_groups):
-            precursor_sum += (
-                node.cell_average(group)
-                * node.cell_average(self._density)
-                * self._data_manager.decay_constants[index]
-            )
-        return precursor_sum * node.volume
 
     def total_precursor_sum(self):
         precursor_sum = 0.0
         for node in self._core_nodes:
-            for index, group in enumerate(self._precursor_groups):
-                precursor_sum += (
-                    node.cell_average(group)
-                    * node.cell_average(self._density)
-                    * self._data_manager.decay_constants[index]
-                    * node.volume
-                )
+            precursor_sum += self._precursor_source[node.index]
         return precursor_sum
 
     @staticmethod
@@ -206,7 +170,7 @@ class Diffusion(NeutronicsStrategy):
         )
         vector_f[0] = current_xs.fast.nu_f * node.volume * (1 - self._beta)
         vector_f[self._ncell] = current_xs.th.nu_f * node.volume * (1 - self._beta)
-        vector_b[0] += self.precursor_sum(node) / k
+        vector_b[0] += self._precursor_source[node.index] / k
 
         for index, node in enumerate(self._core_nodes[1:-1], start=1):
             previous_xs = current_xs
@@ -256,7 +220,7 @@ class Diffusion(NeutronicsStrategy):
                 * node.volume
                 / k
             )
-            vector_b[row_fast] += self.precursor_sum(node) / k
+            vector_b[row_fast] += self._precursor_source[node.index] / k
             vector_f[row_fast] = current_xs.fast.nu_f * node.volume * (1 - self._beta)
             vector_f[row_thermal] = current_xs.th.nu_f * node.volume * (1 - self._beta)
 
@@ -302,7 +266,7 @@ class Diffusion(NeutronicsStrategy):
             * node.volume
             / k
         )
-        vector_b[cell_index_fast] += self.precursor_sum(node) / k
+        vector_b[cell_index_fast] += self._precursor_source[node.index] / k
         vector_f[cell_index_fast] = (
             current_xs.fast.nu_f * node.volume * (1 - self._beta)
         )
@@ -318,9 +282,9 @@ class Diffusion(NeutronicsStrategy):
             xs = self.get_xs(node)
             row_fast = index
             row_thermal = row_fast + self._ncell
-            self._reaction_rate[node.index] = (
-                xs.fast.nu_f * self.flux[row_fast] + xs.th.nu_f * self.flux[row_thermal]
-            )
+            # self._reaction_rate[node.index] = (
+            #     xs.fast.nu_f * self.flux[row_fast] + xs.th.nu_f * self.flux[row_thermal]
+            # )
             self._power[node.index] = (
                 xs.fast.kappa_f * self.flux[row_fast]
                 + xs.th.kappa_f * self.flux[row_thermal]
@@ -332,7 +296,7 @@ class Diffusion(NeutronicsStrategy):
             print(f"Steady state power normalization: {self.normalization_factor}")
         self.total_power = absolute_power * self.normalization_factor
         self._power *= self.normalization_factor
-        self._reaction_rate *= self.normalization_factor
+        # self._reaction_rate *= self.normalization_factor
         self.flux *= self.normalization_factor
 
 
@@ -352,17 +316,19 @@ class DiffusionSteadyStateStrategy(DiffusionSolverStrategy):
         self._diffusion.flux = np.linalg.solve(matrix_a, vector_b)
         f_old = vector_f @ self._diffusion.flux + self._diffusion.total_precursor_sum()
         k_eff = 1.0
-        for i in range(20):
+        for i in range(500):
             matrix_a, vector_b, vector_f = self._diffusion.set_up_matrix(k_eff)
             self._diffusion.flux = np.linalg.solve(matrix_a, vector_b)
             f_new = (
                 vector_f @ self._diffusion.flux + self._diffusion.total_precursor_sum()
             )
-            k_eff = k_eff * f_new / f_old
-            f_old = f_new
-            print(f"Iteration {i}: k-eff = {k_eff}")
-            if abs(f_new - f_old) / f_new < 1e-6:
+            k_eff_new = k_eff * f_new / f_old
+            print(f"Iteration {i}: k-eff = {k_eff_new}")
+            if abs(k_eff_new - k_eff) / k_eff < 1e-8:
+                k_eff = k_eff_new
                 break
+            k_eff = k_eff_new
+            f_old = f_new
 
 
 class DiffusionTransientStrategy(DiffusionSolverStrategy):
