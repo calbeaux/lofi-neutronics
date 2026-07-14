@@ -11,7 +11,6 @@ class PointKineticsStrategy(NeutronicsStrategy):
         core_nodes,
         prompt_neutron_lifetime,
         beta_effective,
-        sigma_fission,
         alpha_t,
         initial_power,
         substep,
@@ -20,7 +19,6 @@ class PointKineticsStrategy(NeutronicsStrategy):
         self._prompt_neutron_lifetime = prompt_neutron_lifetime
         self._beta_effective = beta_effective
         self._modified_beta_effective = beta_effective
-        self._sigma_fission = sigma_fission
         self._alpha_t = alpha_t
         self._initial_power = initial_power
         self._total_power = initial_power

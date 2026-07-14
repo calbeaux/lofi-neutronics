@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 
+from Neutronics.cross_sections import XSSet
 from Neutronics.neutronics_strategy import NeutronicsStrategy
 
 
@@ -45,79 +46,7 @@ class Diffusion(NeutronicsStrategy):
         self._power = data_container.register("power", 0.0)
 
     def get_xs(self, node):
-        class CrossSections:
-            def __init__(
-                self, sigma_tr, sigma_a, nu_sigma_f, in_scatter, out_scatter, kappa_f
-            ):
-                self.tr = sigma_tr
-                self.a = sigma_a
-                self.nu_f = nu_sigma_f
-                self.s_in = in_scatter
-                self.s_out = out_scatter
-                self.d_coef = 1 / (3 * self.tr)
-                self.extrapolation_distance = 0.7104 / self.tr
-                self.kappa_f = kappa_f
-
-        class XSSet:
-            def __init__(self, fast: CrossSections, th: CrossSections):
-                self.fast = fast
-                self.th = th
-
-        def fast_sigma_transport(temperature):
-            return 0.2 - 1e-4 * (temperature - 300)
-
-        def fast_sigma_absorption(temperature):
-            return 0.01 + 5e-5 * (temperature - 300)
-
-        def fast_nu_sigma_fission(temperature):
-            return 0.03 - 1e-5 * (temperature - 300)
-
-        def fast_in_scatter(temperature):
-            return 0.005 + 2e-5 * (temperature - 300)
-
-        def fast_out_scatter(temperature):
-            return 0.02 + 3e-5 * (temperature - 300)
-
-        def fast_kappa_fission(temperature):
-            return 200 - 0.05 * (temperature - 300)
-
-        def th_sigma_transport(temperature):
-            return 0.1 - 5e-5 * (temperature - 300)
-
-        def th_sigma_absorption(temperature):
-            return 0.02 + 1e-5 * (temperature - 300)
-
-        def th_nu_sigma_fission(temperature):
-            return 0.01 - 5e-6 * (temperature - 300)
-
-        def th_in_scatter(temperature):
-            return 0.004 + 1e-5 * (temperature - 300)
-
-        def th_out_scatter(temperature):
-            return 0.01 + 2e-5 * (temperature - 300)
-
-        def th_kappa_fission(temperature):
-            return 180 - 0.03 * (temperature - 300)
-
-        fluid_temp = self._temperature[node.index]
-        fast_xs = CrossSections(
-            fast_sigma_transport(fluid_temp),
-            fast_sigma_absorption(fluid_temp),
-            fast_nu_sigma_fission(fluid_temp),
-            fast_in_scatter(fluid_temp),
-            fast_out_scatter(fluid_temp),
-            fast_kappa_fission(fluid_temp),
-        )
-        th_xs = CrossSections(
-            th_sigma_transport(fluid_temp),
-            th_sigma_absorption(fluid_temp),
-            th_nu_sigma_fission(fluid_temp),
-            th_in_scatter(fluid_temp),
-            th_out_scatter(fluid_temp),
-            th_kappa_fission(fluid_temp),
-        )
-        return XSSet(fast_xs, th_xs)
-
+        return XSSet(self._temperature[node.index])
 
     def total_precursor_sum(self):
         precursor_sum = 0.0
