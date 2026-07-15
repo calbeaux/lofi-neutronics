@@ -110,14 +110,11 @@ class Simulation:
         strategy_type = str(neutronics_dict.get("type", "")).strip().lower()
 
         if strategy_type in {"point_kinetics", "point kinetics", "pointkinetics", "pk"}:
-            prompt_neutron_lifetime = neutronics_dict.get(
-                "prompt_neutron_lifetime", neutronics_dict.get("promptNeutronLifetime")
+            mean_neutron_lifetime = neutronics_dict.get(
+                "mean_neutron_lifetime", neutronics_dict.get("meanNeutronLifetime")
             )
             beta_effective = neutronics_dict.get(
                 "beta_effective", neutronics_dict.get("betaEffective")
-            )
-            sigma_fission = neutronics_dict.get(
-                "sigma_fission", neutronics_dict.get("sigmaFission")
             )
             alpha_t = neutronics_dict.get("alpha_T", neutronics_dict.get("alphaT"))
             initial_power = neutronics_dict.get(
@@ -127,9 +124,8 @@ class Simulation:
 
             return PointKineticsStrategy(
                 core_nodes,
-                prompt_neutron_lifetime,
+                mean_neutron_lifetime,
                 beta_effective,
-                sigma_fission,
                 alpha_t,
                 initial_power,
                 substeps,

@@ -15,6 +15,7 @@ class CrossSections:
     """
     Both of these class methods recreate cross sections from specifc mpact runs.
     this is a temporary solution until we have a more robust way to generate cross sections from mpact.
+    UNITS in cm^-1, except for velocity which is in cm/s and kappa_f which is in J/cm.
     """
     @classmethod
     def fast(cls, temperature):
