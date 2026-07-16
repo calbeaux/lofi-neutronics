@@ -1,7 +1,7 @@
 class CrossSections:
 
     def __init__(self, sigma_tr, sigma_a, nu_sigma_f, in_scatter, out_scatter, kappa_f, velocity):
-        cm_to_m = 100  # cm^-1 to m^-1 conversion factor
+        cm_to_m = 100.0  # cm^-1 to m^-1 conversion factor
         self.tr = sigma_tr * cm_to_m
         self.a = sigma_a * cm_to_m
         self.nu_f = nu_sigma_f * cm_to_m
@@ -20,14 +20,12 @@ class CrossSections:
     @classmethod
     def fast(cls, temperature):
         dt = temperature
-        removal = 3.362333e-03 + 2.000000e-08 * dt
-        out_group_scatter = 1.081667e-02 - 1.333333e-07 * dt
         return cls(
             sigma_tr=3.205000e-01 + 0.000000e+00 * dt,
-            sigma_a= removal - out_group_scatter,
+            sigma_a= 3.362333e-03 + 2.000000e-08 * dt,
             nu_sigma_f=4.864500e-04 - 2.166667e-09 * dt,
             in_scatter=1.345000e+00 + 0.000000e+00 * dt,
-            out_scatter= out_group_scatter,
+            out_scatter= 1.081667e-02 - 1.333333e-07 * dt,
             kappa_f=6.453167e-15 - 2.833333e-20 * dt,
             velocity=3.091500e+07 + 2.500000e+02 * dt,
         )
@@ -35,14 +33,12 @@ class CrossSections:
     @classmethod
     def thermal(cls, temperature):
         dt = temperature
-        removal = 4.929500e-03 - 1.583333e-07 * dt
-        out_group_scatter = 0.0 # no upscatter in thermal group
         return cls(
             sigma_tr=4.055167e-01 + 5.000000e-07 * dt,
-            sigma_a= removal - out_group_scatter,
+            sigma_a= 4.929500e-03 - 1.583333e-07 * dt,
             nu_sigma_f=9.281000e-03 - 3.100000e-07 * dt,
             in_scatter=1.607000e+00 + 3.333333e-06 * dt,
-            out_scatter= out_group_scatter,
+            out_scatter=0.0,  # no upscatter in thermal group
             kappa_f=1.235167e-13 - 4.166667e-18 * dt,
             velocity=5.571000e+05 + 1.533333e+01 * dt,
         )
@@ -52,3 +48,5 @@ class XSSet:
     def __init__(self, temperature):
         self.fast = CrossSections.fast(temperature)
         self.th = CrossSections.thermal(temperature)
+        # k_inf =(self.fast.nu_f  + (self.fast.s_out / self.th.a) * self.th.nu_f)/(self.fast.a + self.fast.s_out)
+        # print(f"Calculated k_inf: {k_inf}")

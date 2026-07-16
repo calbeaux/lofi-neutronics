@@ -34,7 +34,7 @@ from Neutronics.diffusion import Diffusion, DiffusionSteadyStateStrategy, Diffus
 class _XS:
     """Single-group cross-section bundle."""
 
-    def __init__(self, sigma_tr, sigma_a, nu_sigma_f, s_out, kappa_f):
+    def __init__(self, sigma_tr, sigma_a, nu_sigma_f, s_out, kappa_f, velocity=1e7):
         self.tr = sigma_tr
         self.a = sigma_a
         self.nu_f = nu_sigma_f
@@ -43,6 +43,7 @@ class _XS:
         self.d_coef = 1.0 / (3.0 * self.tr)
         self.extrapolation_distance = 0.7104 / self.tr
         self.kappa_f = kappa_f
+        self.velocity = velocity
 
 
 class _XSSet:
@@ -81,6 +82,7 @@ def _make_uniform_slab(n_cells: int, slab_length: float):
 def _make_xs_pair(
     tr1=0.20, a1=0.010, nuf1=0.030, sout1=0.020, kf1=200.0,
     tr2=0.10, a2=0.020, nuf2=0.010, sout2=0.010, kf2=180.0,
+    fast_v=1e6, th_v=2500.0,
 ):
     """
     Default cross sections (T=300 K, Doppler terms = 0 in base class).
@@ -88,9 +90,12 @@ def _make_xs_pair(
     These numbers are taken from the base-class XS functions evaluated at
     T = 300 K so the analytic formula can be checked against the same library
     cross sections without temperature feedback.
+
+    Velocities are chosen so that the thermal time constant τ = 1/(v_th·Σa2)
+    is comparable to the transient test step sizes, making BDF order matter.
     """
-    fast = _XS(tr1, a1, nuf1, sout1, kf1)
-    th   = _XS(tr2, a2, nuf2, sout2, kf2)
+    fast = _XS(tr1, a1, nuf1, sout1, kf1, velocity=fast_v)
+    th   = _XS(tr2, a2, nuf2, sout2, kf2, velocity=th_v)
     return fast, th
 
 
@@ -157,7 +162,7 @@ def analytic_keff_bare_slab(fast_xs: _XS, th_xs: _XS,
 class TestSteadyState:
 
     def test_keff_converges_to_analytic(self):
-        """k-eff from the power-iteration solver matches the analytic formula."""
+        """k-eff from the power-iteration solver matches the analytic formula to within 1%."""
         n_cells = 20
         slab_length = 200.0
         fast_xs, th_xs = _make_xs_pair()
@@ -168,22 +173,18 @@ class TestSteadyState:
         solver = d.set_solver_method(state)
         solver.solve()
 
-        # Recover k-eff from the last iteration's fission source ratio
-        matrix_a, vector_b, vector_f = d.set_up_matrix(k=1.0)
-        flux = d.flux
-        f_computed = vector_f @ flux
-        k_numerical = f_computed / (matrix_a @ flux).sum() * (matrix_a @ flux).sum()
-
-        # Re-run one clean eigenvalue estimate via Rayleigh-type quotient
+        # Rayleigh quotient: at convergence A·φ = (1/k)·F·φ
+        # → k = total_fission / total_loss = (vf @ φ) / sum(A·φ)
         mat, _, vf = d.set_up_matrix(k=1.0)
-        phi = np.linalg.solve(mat, vf * flux + vector_b * 0)
+        phi = d.flux
+        k_numerical = float((vf @ phi) / (mat @ phi).sum())
 
         k_analytic = analytic_keff_bare_slab(fast_xs, th_xs, slab_length, n_cells)
 
-        # The solver iterates for 20 steps; we check that the final flux
-        # satisfies A·φ ≈ (1/k_analytic)·F·φ to within a loose tolerance
-        # because B² depends on the discrete mesh vs. continuum formula.
-        assert abs(k_analytic - 1.0) < 2.0, "Sanity: analytic k should be near 1"
+        assert abs(k_numerical - k_analytic) / k_analytic < 0.01, (
+            f"Solver k-eff {k_numerical:.5f} deviates from analytic {k_analytic:.5f} "
+            f"by {abs(k_numerical - k_analytic) / k_analytic * 100:.2f}%"
+        )
 
     def test_flux_shape_is_symmetric(self):
         """Flux profile must be symmetric for a uniform, left-right-identical slab."""
@@ -528,14 +529,14 @@ class TestTransient:
         # Exact critical XS and fundamental-mode flux
         phi_crit, k_scipy = _exact_critical_flux(n, L, fast_xs, th_xs)
         fast_crit = _XS(fast_xs.tr, fast_xs.a, fast_xs.nu_f / k_scipy,
-                        fast_xs.s_out, fast_xs.kappa_f)
+                        fast_xs.s_out, fast_xs.kappa_f, velocity=fast_xs.velocity)
         th_crit   = _XS(th_xs.tr,  th_xs.a,  th_xs.nu_f  / k_scipy,
-                        th_xs.s_out, th_xs.kappa_f)
+                        th_xs.s_out, th_xs.kappa_f, velocity=th_xs.velocity)
         phi0, _ = _exact_critical_flux(n, L, fast_crit, th_crit)
 
         # 20 % step in Σa2 drives a subcritical transient
         th_perturbed = _XS(th_crit.tr, th_crit.a * 1.20, th_crit.nu_f,
-                           th_crit.s_out, th_crit.kappa_f)
+                           th_crit.s_out, th_crit.kappa_f, velocity=th_crit.velocity)
 
         dt_coarse = 0.02
         dt_fine   = dt_coarse / 1000
@@ -547,8 +548,11 @@ class TestTransient:
             state = State({"time_duration": dt, "time_step": dt, "scheme": scheme})
             tr = d_tr.set_solver_method(state)
             if scheme == "bdf2" and old_phi is not None:
-                tr._old_flux[0] = phi      # t (current)
-                tr._old_flux[1] = old_phi  # t - dt (real prior history)
+                # update_old_variable_array rolls axis=0 then sets [0]=current flux.
+                # For 2-row history: roll swaps rows, so pre-roll [0] → post-roll [1].
+                # We want post-roll: [phi_mid, old_phi], so pre-roll must be [old_phi, phi_mid].
+                tr._old_flux[0] = old_phi  # → slot 1 after roll (t - dt history)
+                tr._old_flux[1] = phi      # → slot 0 after roll, overwritten by current
             else:
                 tr._old_flux[:] = phi
             tr.solve()

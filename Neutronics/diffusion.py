@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 
+from Coupling import node
 from Neutronics.cross_sections import XSSet
 from Neutronics.neutronics_strategy import NeutronicsStrategy
 
@@ -18,11 +19,8 @@ class Diffusion(NeutronicsStrategy):
         self._temperature = None
         self._precursor_source = None
         self._power = None
-        self._reaction_rate = None
-        self.sigma_fission = None
         self.solver_strategy = None
         self.normalization_factor = None
-        self.total_power = None
         self.flux = np.ones(2 * self._ncell) * 1e8
 
     def set_solver_method(self, state):
@@ -71,34 +69,34 @@ class Diffusion(NeutronicsStrategy):
         d_up_th = self.harmonic_mean(current_xs.th.d_coef, next_xs.th.d_coef)
         d_up_fast = self.harmonic_mean(current_xs.fast.d_coef, next_xs.fast.d_coef)
         diagonal_fast = (
-            current_xs.fast.a * node.volume
-            + d_up_fast / node.volume
-            + current_xs.fast.s_out * node.volume
+            current_xs.fast.a * node.length
+            + d_up_fast / node.length
+            + current_xs.fast.s_out * node.length
         )
-        diagonal_thermal = current_xs.th.a * node.volume + d_up_th / node.volume
+        diagonal_thermal = current_xs.th.a * node.length + d_up_th / node.length
         matrix_a[0, 0] = diagonal_fast + (
             current_xs.fast.d_coef
-            / ((node.volume / 2) + current_xs.fast.extrapolation_distance)
+            / ((node.length / 2) + current_xs.fast.extrapolation_distance)
         )
-        matrix_a[0, 1] = -d_up_fast / node.volume
+        matrix_a[0, 1] = -d_up_fast / node.length
         matrix_a[self._ncell, self._ncell] = diagonal_thermal + (
             current_xs.th.d_coef
-            / ((node.volume / 2) + current_xs.th.extrapolation_distance)
+            / ((node.length / 2) + current_xs.th.extrapolation_distance)
         )
-        matrix_a[self._ncell, self._ncell + 1] = -d_up_th / node.volume
-        matrix_a[self._ncell, 0] = -current_xs.fast.s_out * node.volume
+        matrix_a[self._ncell, self._ncell + 1] = -d_up_th / node.length
+        matrix_a[self._ncell, 0] = -current_xs.fast.s_out * node.length
         vector_b[0] = (
-            (1 - self._beta) * current_xs.fast.nu_f * self.flux[0] * node.volume / k
+            (1 - self._beta) * current_xs.fast.nu_f * self.flux[0] * node.length / k
         )
         vector_b[0] += (
             (1 - self._beta)
             * current_xs.th.nu_f
             * self.flux[self._ncell]
-            * node.volume
+            * node.length
             / k
         )
-        vector_f[0] = current_xs.fast.nu_f * node.volume * (1 - self._beta)
-        vector_f[self._ncell] = current_xs.th.nu_f * node.volume * (1 - self._beta)
+        vector_f[0] = current_xs.fast.nu_f * node.length * (1 - self._beta)
+        vector_f[self._ncell] = current_xs.th.nu_f * node.length * (1 - self._beta)
         vector_b[0] += self._precursor_source[node.index] / k
 
         for index, node in enumerate(self._core_nodes[1:-1], start=1):
@@ -117,41 +115,41 @@ class Diffusion(NeutronicsStrategy):
             d_up_fast = self.harmonic_mean(current_xs.fast.d_coef, next_xs.fast.d_coef)
 
             diagonal_fast = (
-                current_xs.fast.a * node.volume
-                + (d_down_fast + d_up_fast) / node.volume
-                + current_xs.fast.s_out * node.volume
+                current_xs.fast.a * node.length
+                + (d_down_fast + d_up_fast) / node.length
+                + current_xs.fast.s_out * node.length
             )
             diagonal_thermal = (
-                current_xs.th.a * node.volume + (d_down_th + d_up_th) / node.volume
+                current_xs.th.a * node.length + (d_down_th + d_up_th) / node.length
             )
 
             matrix_a[row_fast, cell_index_fast] = diagonal_fast
             matrix_a[row_thermal, cell_index_thermal] = diagonal_thermal
-            matrix_a[row_fast, cell_index_fast - 1] = -d_down_fast / node.volume
-            matrix_a[row_thermal, cell_index_thermal - 1] = -d_down_th / node.volume
-            matrix_a[row_fast, cell_index_fast + 1] = -d_up_fast / node.volume
-            matrix_a[row_thermal, cell_index_thermal + 1] = -d_up_th / node.volume
+            matrix_a[row_fast, cell_index_fast - 1] = -d_down_fast / node.length
+            matrix_a[row_thermal, cell_index_thermal - 1] = -d_down_th / node.length
+            matrix_a[row_fast, cell_index_fast + 1] = -d_up_fast / node.length
+            matrix_a[row_thermal, cell_index_thermal + 1] = -d_up_th / node.length
             matrix_a[row_thermal, cell_index_fast] = (
-                -current_xs.fast.s_out * node.volume
+                -current_xs.fast.s_out * node.length
             )
 
             vector_b[row_fast] = (
                 (1 - self._beta)
                 * current_xs.fast.nu_f
                 * self.flux[row_fast]
-                * node.volume
+                * node.length
                 / k
             )
             vector_b[row_fast] += (
                 (1 - self._beta)
                 * current_xs.th.nu_f
                 * self.flux[row_thermal]
-                * node.volume
+                * node.length
                 / k
             )
             vector_b[row_fast] += self._precursor_source[node.index] / k
-            vector_f[row_fast] = current_xs.fast.nu_f * node.volume * (1 - self._beta)
-            vector_f[row_thermal] = current_xs.th.nu_f * node.volume * (1 - self._beta)
+            vector_f[row_fast] = current_xs.fast.nu_f * node.length * (1 - self._beta)
+            vector_f[row_thermal] = current_xs.th.nu_f * node.length * (1 - self._beta)
 
         row_fast += 1
         row_thermal += 1
@@ -165,68 +163,66 @@ class Diffusion(NeutronicsStrategy):
             previous_xs.fast.d_coef, current_xs.fast.d_coef
         )
         diagonal_fast = (
-            current_xs.fast.a * node.volume
-            + d_down_fast / node.volume
-            + current_xs.fast.s_out * node.volume
+            current_xs.fast.a * node.length
+            + d_down_fast / node.length
+            + current_xs.fast.s_out * node.length
         )
-        diagonal_thermal = current_xs.th.a * node.volume + d_down_th / node.volume
+        diagonal_thermal = current_xs.th.a * node.length + d_down_th / node.length
         matrix_a[row_fast, cell_index_fast] = diagonal_fast + (
             current_xs.fast.d_coef
-            / ((node.volume / 2) + current_xs.fast.extrapolation_distance)
+            / ((node.length / 2) + current_xs.fast.extrapolation_distance)
         )
-        matrix_a[row_fast, cell_index_fast - 1] = -d_down_fast / node.volume
+        matrix_a[row_fast, cell_index_fast - 1] = -d_down_fast / node.length
         matrix_a[row_thermal, cell_index_thermal] = diagonal_thermal + (
             current_xs.th.d_coef
-            / ((node.volume / 2) + current_xs.th.extrapolation_distance)
+            / ((node.length / 2) + current_xs.th.extrapolation_distance)
         )
-        matrix_a[row_thermal, cell_index_thermal - 1] = -d_down_th / node.volume
-        matrix_a[row_thermal, cell_index_fast] = -current_xs.fast.s_out * node.volume
+        matrix_a[row_thermal, cell_index_thermal - 1] = -d_down_th / node.length
+        matrix_a[row_thermal, cell_index_fast] = -current_xs.fast.s_out * node.length
         vector_b[cell_index_fast] = (
             (1 - self._beta)
             * current_xs.fast.nu_f
             * self.flux[cell_index_fast]
-            * node.volume
+            * node.length
             / k
         )
         vector_b[cell_index_fast] += (
             (1 - self._beta)
             * current_xs.th.nu_f
             * self.flux[cell_index_thermal]
-            * node.volume
+            * node.length
             / k
         )
         vector_b[cell_index_fast] += self._precursor_source[node.index] / k
         vector_f[cell_index_fast] = (
-            current_xs.fast.nu_f * node.volume * (1 - self._beta)
+            current_xs.fast.nu_f * node.length * (1 - self._beta)
         )
         vector_f[cell_index_thermal] = (
-            current_xs.th.nu_f * node.volume * (1 - self._beta)
+            current_xs.th.nu_f * node.length * (1 - self._beta)
         )
         return matrix_a, vector_b, vector_f
 
     def update_power(self):
         self.solver_strategy.solve()
-        absolute_power = 0.0
+        total_power = 0.0
         for index, node in enumerate(self._core_nodes):
             xs = self.get_xs(node)
             row_fast = index
             row_thermal = row_fast + self._ncell
-            # self._reaction_rate[node.index] = (
-            #     xs.fast.nu_f * self.flux[row_fast] + xs.th.nu_f * self.flux[row_thermal]
-            # )
             self._power[node.index] = (
                 xs.fast.kappa_f * self.flux[row_fast]
                 + xs.th.kappa_f * self.flux[row_thermal]
             )
-            absolute_power += self._power[node.index] * node.volume
-
+            total_power += self._power[node.index] * node.volume
         if self._steady_state:
-            self.normalization_factor = self._initial_power / absolute_power
+            self.normalization_factor = self._initial_power / total_power
             print(f"Steady state power normalization: {self.normalization_factor}")
-        self.total_power = absolute_power * self.normalization_factor
-        self._power *= self.normalization_factor
-        # self._reaction_rate *= self.normalization_factor
-        self.flux *= self.normalization_factor
+            total_power *= self.normalization_factor
+            self._power *= self.normalization_factor
+            self.flux *= self.normalization_factor
+
+        print(f"Total power: {total_power}")
+
 
 
 class DiffusionSolverStrategy(ABC):
@@ -279,28 +275,18 @@ class DiffusionTransientStrategy(DiffusionSolverStrategy):
         self._dt = dt
         self._order = order = int(scheme[-1])
         self._old_flux = np.zeros((order, 2 * self._diffusion._ncell))
-        self._thermal_velocity = 2200
-        self._fast_velocity = 1e7
+        self.set_up_current_data_container_interactions()
 
-    def set_up_current_data_container_interactions(self, data_container):
+    def set_up_current_data_container_interactions(self):
         for i in range(self._order):
             self._old_flux[i] = self._diffusion.flux
 
-    def update_old_variable_array(self, data_container):
-        self._old_flux = np.roll(self._old_flux, 1)
+    def update_old_variable_array(self):
+        self._old_flux = np.roll(self._old_flux, 1, axis=0)
         self._old_flux[0] = self._diffusion.flux
-        velocity = np.mean(data_container["velocity"])
-        min_velocity = np.min(data_container["velocity"])
-        power = self._diffusion.total_power
-
-        def fmt(value):
-            return f"{value:.8e}" if value is not None else "None"
-
-        print(
-            f"Avg Velocity: {fmt(velocity)}, Min Velocity: {fmt(min_velocity)}, Core Power: {fmt(power)}"
-        )
 
     def solve(self):
+        self.update_old_variable_array()
         matrix_a, vector_b, _ = self._diffusion.set_up_matrix(k=1.0)
         gamma = self.gamma_vector[self._order - 1] / self._dt
         coefficient_vector = (
@@ -308,22 +294,23 @@ class DiffusionTransientStrategy(DiffusionSolverStrategy):
         )
 
         for index, node in enumerate(self._diffusion._core_nodes):
+            current_xs = self._diffusion.get_xs(node)
             vector_b[index] += (
-                node.volume
+                node.length
                 * (self._old_flux.T[index] @ coefficient_vector)
-                / self._fast_velocity
+                / current_xs.fast.velocity
             )
-            matrix_a[index, index] += node.volume * gamma / self._fast_velocity
+            matrix_a[index, index] += node.length * gamma / current_xs.fast.velocity
             vector_b[index + self._diffusion._ncell] += (
-                node.volume
+                node.length
                 * (
                     self._old_flux.T[index + self._diffusion._ncell]
                     @ coefficient_vector
                 )
-                / self._thermal_velocity
+                / current_xs.th.velocity
             )
             matrix_a[
                 index + self._diffusion._ncell, index + self._diffusion._ncell
-            ] += (node.volume * gamma / self._thermal_velocity)
+            ] += (node.length * gamma / current_xs.th.velocity)
 
         self._diffusion.flux = np.linalg.solve(matrix_a, vector_b)

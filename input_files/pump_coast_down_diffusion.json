@@ -135,7 +135,7 @@
     {},
     {"transient": {
                 "time_duration": 25.00,
-                "time_step": 0.001,
+                "time_step": 0.0001,
                 "scheme": "BDF1",
                 "save_all_data": false
       },
