@@ -9,13 +9,13 @@ from Neutronics.neutronics_strategy import NeutronicsStrategy
 
 class Diffusion(NeutronicsStrategy):
     def __init__(self, core_nodes, initial_power, substep, beta):
-        print("Initializing Diffusion Neutronics Strategy")
         self._core_nodes = core_nodes
         self._ncell = len(core_nodes)
         self._initial_power = initial_power
         self._substeps = substep
         self._beta = beta
         self._steady_state = True
+        self.k_eff = 1.0
         self._temperature = None
         self._precursor_source = None
         self._power = None
@@ -25,7 +25,6 @@ class Diffusion(NeutronicsStrategy):
 
     def set_solver_method(self, state):
         solver_type = state.state_type
-        print("Setting neutronics solver method to", solver_type)
         if solver_type == "steady_state":
             self._steady_state = True
             self.solver_strategy = DiffusionSteadyStateStrategy(self)
@@ -47,10 +46,7 @@ class Diffusion(NeutronicsStrategy):
         return XSSet(self._temperature[node.index])
 
     def total_precursor_sum(self):
-        precursor_sum = 0.0
-        for node in self._core_nodes:
-            precursor_sum += self._precursor_source[node.index]
-        return precursor_sum
+        return sum(self._precursor_source[node.index] for node in self._core_nodes)
 
     @staticmethod
     def harmonic_mean(x, y):
@@ -216,7 +212,6 @@ class Diffusion(NeutronicsStrategy):
             total_power += self._power[node.index] * node.volume
         if self._steady_state:
             self.normalization_factor = self._initial_power / total_power
-            print(f"Steady state power normalization: {self.normalization_factor}")
             total_power *= self.normalization_factor
             self._power *= self.normalization_factor
             self.flux *= self.normalization_factor
@@ -240,21 +235,19 @@ class DiffusionSteadyStateStrategy(DiffusionSolverStrategy):
         matrix_a, vector_b, vector_f = self._diffusion.set_up_matrix()
         self._diffusion.flux = np.linalg.solve(matrix_a, vector_b)
         f_old = vector_f @ self._diffusion.flux + self._diffusion.total_precursor_sum()
-        k_eff = 1.0
         for i in range(500):
-            matrix_a, vector_b, vector_f = self._diffusion.set_up_matrix(k_eff)
+            matrix_a, vector_b, vector_f = self._diffusion.set_up_matrix(self._diffusion.k_eff)
             self._diffusion.flux = np.linalg.solve(matrix_a, vector_b)
             f_new = (
                 vector_f @ self._diffusion.flux + self._diffusion.total_precursor_sum()
             )
-            k_eff_new = k_eff * f_new / f_old
+            k_eff_new = self._diffusion.k_eff * f_new / f_old
             print(f"Iteration {i}: k-eff = {k_eff_new}")
-            if abs(k_eff_new - k_eff) / k_eff < 1e-8:
-                k_eff = k_eff_new
+            if abs(k_eff_new - self._diffusion.k_eff) / self._diffusion.k_eff < 1e-8:
+                self._diffusion.k_eff = k_eff_new
                 break
-            k_eff = k_eff_new
+            self._diffusion.k_eff = k_eff_new
             f_old = f_new
-
 
 class DiffusionTransientStrategy(DiffusionSolverStrategy):
     coefficient_matrix = np.array(
@@ -287,7 +280,7 @@ class DiffusionTransientStrategy(DiffusionSolverStrategy):
 
     def solve(self):
         self.update_old_variable_array()
-        matrix_a, vector_b, _ = self._diffusion.set_up_matrix(k=1.0)
+        matrix_a, vector_b, _ = self._diffusion.set_up_matrix(k=self._diffusion.k_eff)
         gamma = self.gamma_vector[self._order - 1] / self._dt
         coefficient_vector = (
             self.coefficient_matrix[self._order - 1][: self._order] * gamma
