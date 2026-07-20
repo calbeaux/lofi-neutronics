@@ -199,13 +199,13 @@ class Simulation:
         while current_time < self._state.time_duration:
             print(f"Current time: {current_time}")
             self._neutronics.update_power()
-            self.send_data()
-            print("solving fluid flow")
-            self._syth.solve_fluid_flow(delta_time=self._state.time_step)
-            print("solving mass transport")
-            self._syth.solve_mass_transport(delta_time=self._state.time_step)
-            self.receive_data()
-            self._syth.write_solution_to_input_file()
+            # self.send_data()
+            # print("solving fluid flow")
+            # self._syth.solve_fluid_flow(delta_time=self._state.time_step)
+            # print("solving mass transport")
+            # self._syth.solve_mass_transport(delta_time=self._state.time_step)
+            # self.receive_data()
+            # self._syth.write_solution_to_input_file()
             current_time += self._state.time_step
             print(
                 f"Total precursors: {self.get_total_precursors() / (2.43 * 1e5 / self._kappa)}"
@@ -222,7 +222,7 @@ class Simulation:
         )
         self.receive_data()
         self._neutronics.update_power()
-        self._syth.write_solution_to_input_file()
+        # self._syth.write_solution_to_input_file()
         print(
             f"Total precursors: {self.get_total_precursors() / (2.43 * 1e5 / self._kappa)}"
         )
