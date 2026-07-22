@@ -12,6 +12,7 @@ class CrossSections:
         self.extrapolation_distance = 0.7104 / self.tr
         self.velocity = velocity * 1 / cm_to_m  # m/s, for thermal neutrons
 
+
     """
     Both of these class methods recreate cross sections from specifc mpact runs.
     this is a temporary solution until we have a more robust way to generate cross sections from mpact.
@@ -48,5 +49,43 @@ class XSSet:
     def __init__(self, temperature):
         self.fast = CrossSections.fast(temperature)
         self.th = CrossSections.thermal(temperature)
-        # k_inf =(self.fast.nu_f  + (self.fast.s_out / self.th.a) * self.th.nu_f)/(self.fast.a + self.fast.s_out)
+        k_inf =(self.fast.nu_f  + (self.fast.s_out / self.th.a) * self.th.nu_f)/(self.fast.a + self.fast.s_out)
         # print(f"Calculated k_inf: {k_inf}")
+        # thermal_kappa = 2.43 *self.th.kappa_f / self.th.nu_f
+        # fast_kappa = 2.43 * self.fast.kappa_f / self.fast.nu_f
+        # print(f"Calculated thermal kappa: {thermal_kappa}")
+        # print(f"Calculated fast kappa: {fast_kappa}")
+        # fast_to_thermal_ratio = 2.601813e-02
+        # weighted_kappa = fast_kappa * fast_to_thermal_ratio + thermal_kappa * (1 - fast_to_thermal_ratio)
+        # print(f"Weighted kappa: {weighted_kappa}")
+
+
+if __name__ == "__main__":
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    temps = np.linspace(800, 1200, 50)
+    rhos = []
+    for temp in temps:
+        xs = XSSet(temperature=temp)
+        k_inf = (xs.fast.nu_f + (xs.fast.s_out / xs.th.a) * xs.th.nu_f) / (xs.fast.a + xs.fast.s_out)
+        rho = (k_inf - 1) / k_inf
+        rhos.append(rho)
+
+    temps = np.array(temps)
+    rhos = np.array(rhos)
+
+    # linear fit and slope
+    coeffs = np.polyfit(temps, rhos, 1)
+    slope, intercept = coeffs[0], coeffs[1]
+
+    plt.figure()
+    plt.plot(temps, rhos, 'o-', label='rho')
+    plt.plot(temps, slope * temps + intercept, '--', label=f'fit slope={slope:.3e} per K')
+    plt.xlabel('Temperature (K)')
+    plt.ylabel('Reactivity rho')
+    plt.title('Reactivity vs Temperature')
+    plt.legend()
+    plt.annotate(f'slope = {slope:.3e} /K', xy=(0.05, 0.05), xycoords='axes fraction')
+    plt.grid(True)
+    plt.show()

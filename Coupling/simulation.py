@@ -17,9 +17,11 @@ class Simulation:
         self._syth = Syth(input_file)
         self._core_nodes = Simulation._get_core(input_file)
         self._input_dict = Simulation._get_input_json(input_file)
+
         self._neutronics = Simulation._build_neutronics_strategy(
             self._input_dict, self._core_nodes
         )
+        self._substeps = self._neutronics._substeps
         self.states = Simulation._get_states(self._input_dict)
         self._data_container = DataContainer(self._core_nodes[-1].index + 1)
         self._verbose = verbose
@@ -27,10 +29,13 @@ class Simulation:
         self._precursor_source = None
         self._power = None
         self._kappa = 3.24e-11  # joules per fission
+        self._kappa_diffusion = 3.232660195168847e-11  # joules per fission
+        # self._kappa_diffusion = 6.553995e-11
         self._state = None
         self._syth.set_neutron_precursor_source_coupled_to_power_factor(1 / self._kappa)
         self._syth.set_state(1)
         self._syth.set_state(0)
+        self._run_null = True
 
     @staticmethod
     def _get_core(input_file):
@@ -170,12 +175,17 @@ class Simulation:
         self._set_up_data_container_interactions()
 
     def receive_data(self):
+        raw_precursor_sum = 0.0
         for node in self._core_nodes:
             self._temperature[node.index] = self._syth.get_fluid_node_value(
                 "temperature", node.index
             )
             precursor = self._syth.get_total_delayed_neutron_sources(node.index)
+            raw_precursor_sum += precursor
             self._precursor_source[node.index] = precursor
+        #     if not self._run_null:
+        #         self._precursor_source[node.index] *=100.0
+        # print(f"raw (unscaled) precursor source sum from SyTH: {raw_precursor_sum}")
 
     def send_data(self):
         for node in self._core_nodes:
@@ -190,26 +200,69 @@ class Simulation:
         if self._state.state_type == "steady_state":
             self._run_steady_state()
         elif self._state.state_type == "transient":
-            self._run_transient()
+            if self._run_null:
+                self._run_null_transient()
+                self._run_null = False
+            else:
+                self._run_transient()
         else:
             raise ValueError(f"Unsupported state type: {self._state.state_type!r}")
 
+    def _run_null_transient(self):
+        # old_keff = self._neutronics.k_eff
+        current_time = self._state.time_step
+        self._neutronics.set_solver_method(State("steadystate"))
+        while current_time < self._state.time_duration:
+
+            self._syth.solve_fluid_flow(delta_time=self._state.time_step, fluid_solve_tol=1e-6)
+            self._syth.solve_mass_transport(delta_time=self._state.time_step, fluid_solve_tol=1e-12)
+            self.receive_data()
+            self._neutronics.update_power()
+            self.send_data()
+            current_time += self._state.time_step
+            print(f"Time: {current_time:.3f}")
+            print(f"core temperature : {self._neutronics.get_core_temperature()}")
+            # print(f"k_eff: {self._neutronics.k_eff}")
+            # new_keff = self._neutronics.k_eff
+            # print(f"Old k_eff: {old_keff}, New k_eff: {new_keff}")
+            # if abs(new_keff - old_keff) < 1e-8:
+            #     print("k_eff has converged.")
+            #     break
+            # old_keff = new_keff
+        # self._neutronics.set_solver_method(self._state)
+
     def _run_transient(self):
+        original_temp = self._neutronics.get_core_temperature()
         current_time = self._state.time_step
         while current_time < self._state.time_duration:
             print(f"Current time: {current_time}")
-            self._neutronics.update_power()
+            # self._neutronics.update_power()
             # self.send_data()
-            # print("solving fluid flow")
-            # self._syth.solve_fluid_flow(delta_time=self._state.time_step)
-            # print("solving mass transport")
-            # self._syth.solve_mass_transport(delta_time=self._state.time_step)
+            print("solving fluid flow")
+            self._syth.solve_fluid_flow(delta_time=self._state.time_step, fluid_solve_tol=1e-6)
+            print("solving mass transport")
+            self._syth.solve_mass_transport(delta_time=self._state.time_step, fluid_solve_tol=1e-12)
+            # self.receive_data()
+            for substep in range(self._substeps):
+                print(f"Substep {substep + 1}/{self._substeps}")
+                # self._syth.solve_mass_transport(delta_time=self._state.time_step/self._substeps)
+                self.receive_data()
+                self._neutronics.update_power()
+                self.send_data()
+
+            # self._syth.solve_fluid_flow(delta_time=self._state.time_step/2)
+            # self._syth.solve_mass_transport(
+            #     delta_time=self._state.time_step/2 ,
+            #     fluid_solve_tol=1e-12,
+            # )
+
             # self.receive_data()
             # self._syth.write_solution_to_input_file()
             current_time += self._state.time_step
             print(
                 f"Total precursors: {self.get_total_precursors() / (2.43 * 1e5 / self._kappa)}"
             )
+            print(f"core temperature : {self._neutronics.get_core_temperature()}.  diff : {self._neutronics.get_core_temperature() - original_temp}")
 
     def _run_steady_state(self):
         self._neutronics.update_power()

@@ -133,9 +133,17 @@
   },
   "states": [
     {},
+    {
+      "transient": {
+        "time_duration": 0.20,
+        "time_step": 0.001,
+        "scheme": "BDF1",
+        "save_all_data": false
+      }
+    },
     {"transient": {
                 "time_duration": 25.00,
-                "time_step": 0.0001,
+                "time_step": 0.001,
                 "scheme": "BDF1",
                 "save_all_data": false
       },
@@ -163,6 +171,7 @@
     "type": "diffusion",
     "core_nodes": ["Fuel Channel"],
     "beta_effective": 0.006502,
-    "initial_power": 1e6
+    "initial_power": 1e6,
+    "substeps": 20
   }
 }

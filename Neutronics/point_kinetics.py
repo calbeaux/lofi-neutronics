@@ -35,7 +35,7 @@ class PointKineticsStrategy(NeutronicsStrategy):
         self._alpha_t = alpha_t
         self._initial_power = initial_power
         self._total_power = initial_power
-        self._substeps = substep
+        self._substeps = substep if substep is not None and substep > 0 else 1
         self._t0 = None
         self._precursor_source = None
         self._temperature = None
@@ -89,6 +89,9 @@ class PointKineticsStrategy(NeutronicsStrategy):
 
     def register_data_container_variables(self, data_container):
         self._power = data_container.register("power", 0.0)
+
+    def get_core_temperature(self):
+        return self.get_core_average(self._temperature)
 
     def get_core_average(self, data):
         average = 0.0
