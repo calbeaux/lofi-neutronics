@@ -49,16 +49,6 @@ class XSSet:
     def __init__(self, temperature):
         self.fast = CrossSections.fast(temperature)
         self.th = CrossSections.thermal(temperature)
-        k_inf =(self.fast.nu_f  + (self.fast.s_out / self.th.a) * self.th.nu_f)/(self.fast.a + self.fast.s_out)
-        # print(f"Calculated k_inf: {k_inf}")
-        # thermal_kappa = 2.43 *self.th.kappa_f / self.th.nu_f
-        # fast_kappa = 2.43 * self.fast.kappa_f / self.fast.nu_f
-        # print(f"Calculated thermal kappa: {thermal_kappa}")
-        # print(f"Calculated fast kappa: {fast_kappa}")
-        # fast_to_thermal_ratio = 2.601813e-02
-        # weighted_kappa = fast_kappa * fast_to_thermal_ratio + thermal_kappa * (1 - fast_to_thermal_ratio)
-        # print(f"Weighted kappa: {weighted_kappa}")
-
 
 if __name__ == "__main__":
     import numpy as np
@@ -71,6 +61,14 @@ if __name__ == "__main__":
         k_inf = (xs.fast.nu_f + (xs.fast.s_out / xs.th.a) * xs.th.nu_f) / (xs.fast.a + xs.fast.s_out)
         rho = (k_inf - 1) / k_inf
         rhos.append(rho)
+        # print(f"Calculated k_inf: {k_inf}")
+        # thermal_kappa = 2.43 *self.th.kappa_f / self.th.nu_f
+        # fast_kappa = 2.43 * self.fast.kappa_f / self.fast.nu_f
+        # print(f"Calculated thermal kappa: {thermal_kappa}")
+        # print(f"Calculated fast kappa: {fast_kappa}")
+        # fast_to_thermal_ratio = 2.601813e-02
+        # weighted_kappa = fast_kappa * fast_to_thermal_ratio + thermal_kappa * (1 - fast_to_thermal_ratio)
+        # print(f"Weighted kappa: {weighted_kappa}")
 
     temps = np.array(temps)
     rhos = np.array(rhos)

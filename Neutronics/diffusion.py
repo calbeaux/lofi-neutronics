@@ -214,7 +214,7 @@ class Diffusion(NeutronicsStrategy):
             row_fast = index
             row_thermal = row_fast + self._ncell
             self._power[node.index] = (
-                 3.24e-11*xs.fast.nu_f * self.flux[row_fast] / 2.43
+                 3.24e-11*xs.fast.nu_f * self.flux[row_fast] / 2.43 #this is a little dubious but used to make sure syth receives correct fission rate
                 +  3.24e-11*xs.th.nu_f * self.flux[row_thermal] /2.43
             )
             total_power += self._power[node.index] * node.volume
@@ -275,11 +275,10 @@ class DiffusionTransientStrategy(DiffusionSolverStrategy):
         self._diffusion = diffusion_strategy
         self._relax = 0.55
         self._dt = dt
-        # self._order = int(scheme[-1])
-        self._order = 2
+        self._order = int(scheme[-1])
+        #TODO: order should maybe be set to 2 or possibly set to theta method
         self._old_flux = np.zeros((self._order, 2 * self._diffusion._ncell))
         self.set_up_current_data_container_interactions()
-        self._old_precursor_source = self._diffusion.total_precursor_sum()
 
     def set_up_current_data_container_interactions(self):
         for i in range(self._order):
@@ -288,11 +287,9 @@ class DiffusionTransientStrategy(DiffusionSolverStrategy):
     def update_old_variable_array(self):
         self._old_flux = np.roll(self._old_flux, 1, axis=0)
         self._old_flux[0] = self._diffusion.flux
-        # self._old_precursor_source = self._diffusion.total_precursor_sum()
 
     def solve(self):
         self.update_old_variable_array()
-        print(f" change in core precursors: {(self._diffusion.total_precursor_sum() - self._old_precursor_source)/self._old_precursor_source}")
         gamma = self.gamma_vector[self._order - 1] / self._dt
         coefficient_vector = (
             self.coefficient_matrix[self._order - 1][: self._order] * gamma

@@ -172,6 +172,7 @@
     "core_nodes": ["Fuel Channel"],
     "beta_effective": 0.006502,
     "initial_power": 1e6,
-    "substeps": 20
+    "substeps": 20,
+    "null_transient": true
   }
 }
