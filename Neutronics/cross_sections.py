@@ -21,12 +21,14 @@ class CrossSections:
     @classmethod
     def fast(cls, temperature):
         dt = temperature
+        rm = 3.362333e-03 + 2.000000e-08 * dt
+        out_scatter = 1.081667e-02 - 1.333333e-07 * dt
         return cls(
             sigma_tr=3.205000e-01 + 0.000000e+00 * dt,
-            sigma_a= 3.362333e-03 + 2.000000e-08 * dt,
+            sigma_a= rm - out_scatter,
             nu_sigma_f=4.864500e-04 - 2.166667e-09 * dt,
             in_scatter=1.345000e+00 + 0.000000e+00 * dt,
-            out_scatter= 1.081667e-02 - 1.333333e-07 * dt,
+            out_scatter= out_scatter,
             kappa_f=6.453167e-15 - 2.833333e-20 * dt,
             velocity=3.091500e+07 + 2.500000e+02 * dt,
         )

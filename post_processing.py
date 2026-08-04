@@ -22,10 +22,15 @@ def _sorted_timestep_keys(group):
     return sorted(group.keys(), key=lambda k: int(k))
 
 
-def _dt(filepath):
+def _fluid_data_path(state):
+    """Return the 'solution/fluid_data_NNNN' path for a given state number."""
+    return f"solution/fluid_data_{state:04d}"
+
+
+def _dt(filepath, state=1):
     with h5py.File(filepath, "r") as f:
         try:
-            return float(f["fluid_solve/state_1/transient_simulation/dt"][()])
+            return float(f[f"fluid_solve/state_{state}/transient_simulation/dt"][()])
         except KeyError:
             return None
 
@@ -46,22 +51,23 @@ def read_steady_state(filepath):
     return data
 
 
-def read_timestep(filepath, timestep_key):
+def read_timestep(filepath, timestep_key, state=1):
     """
     Return data for a single transient timestep.
 
     Args:
         filepath: path to the H5 file
         timestep_key: integer or zero-padded string key (e.g. 118166 or '118166')
+        state: state number to read from (i.e. 'solution/fluid_data_000<state>'; default 1)
 
     Returns:
         dict with numpy arrays for each dataset plus 'time' (float, seconds)
     """
     key = str(int(timestep_key))
-    dt = _dt(filepath)
+    dt = _dt(filepath, state=state)
     data = {}
     with h5py.File(filepath, "r") as f:
-        ts = f[f"solution/fluid_data_0001/{key}"]
+        ts = f[f"{_fluid_data_path(state)}/{key}"]
         for name in SCALAR_DATASETS:
             if name in ts:
                 data[name] = ts[name][()]
@@ -74,7 +80,7 @@ def read_timestep(filepath, timestep_key):
     return data
 
 
-def read_solution(filepath, stride=1, start=None, stop=None):
+def read_solution(filepath, stride=1, start=None, stop=None, state=1):
     """
     Load transient solution data from an H5 file into memory.
 
@@ -86,6 +92,7 @@ def read_solution(filepath, stride=1, start=None, stop=None):
         stride:   load every Nth timestep (default 1 = all)
         start:    first timestep integer index to include (inclusive, default first)
         stop:     last timestep integer index to include (inclusive, default last)
+        state:    state number to read from (i.e. 'solution/fluid_data_000<state>'; default 1)
 
     Returns:
         dict with keys:
@@ -100,10 +107,10 @@ def read_solution(filepath, stride=1, start=None, stop=None):
             'power'                             (n_timesteps, 375)
             'neutron_precursor_concentrations'  (n_precursors, n_timesteps, 376)
     """
-    dt = _dt(filepath)
+    dt = _dt(filepath, state=state)
 
     with h5py.File(filepath, "r") as f:
-        fd1 = f["solution/fluid_data_0001"]
+        fd1 = f[_fluid_data_path(state)]
         all_keys = _sorted_timestep_keys(fd1)
 
         start_idx = int(all_keys[0]) if start is None else start
@@ -148,9 +155,9 @@ def read_solution(filepath, stride=1, start=None, stop=None):
     return result
 
 
-def summarize(filepath):
+def summarize(filepath, state=1):
     """Print a concise summary of the H5 file contents."""
-    dt = _dt(filepath)
+    dt = _dt(filepath, state=state)
     with h5py.File(filepath, "r") as f:
         meta = f.get("metadata")
         if meta:
@@ -159,7 +166,7 @@ def summarize(filepath):
             print(f"Version : {version}")
             print(f"Exported: {exported}")
 
-        fd1 = f["solution/fluid_data_0001"]
+        fd1 = f[_fluid_data_path(state)]
         keys = _sorted_timestep_keys(fd1)
         n_ts = len(keys)
         first_key, last_key = int(keys[0]), int(keys[-1])
@@ -210,7 +217,7 @@ def _get_core_nodes(filepath):
     return sorted(core, key=lambda x: x[0])
 
 
-def compute_total_core_power(filepath, stride=10):
+def compute_total_core_power(filepath, stride=10, state=1):
     """
     Compute total reactor power (W) at every ``stride`` transient timesteps.
 
@@ -220,6 +227,7 @@ def compute_total_core_power(filepath, stride=10):
     Args:
         filepath: path to the H5 file
         stride:   sample every Nth timestep (default 10)
+        state:    state number to read from (i.e. 'solution/fluid_data_000<state>'; default 1)
 
     Returns:
         times  (n,)  float array  – time in seconds
@@ -229,10 +237,10 @@ def compute_total_core_power(filepath, stride=10):
     core_indices = np.array([idx for idx, _ in core], dtype=int)
     volumes = np.array([vol for _, vol in core], dtype=np.float64)
 
-    dt = _dt(filepath)
+    dt = _dt(filepath, state=state)
 
     with h5py.File(filepath, "r") as f:
-        fd1 = f["solution/fluid_data_0001"]
+        fd1 = f[_fluid_data_path(state)]
         all_keys = _sorted_timestep_keys(fd1)
         selected = all_keys[::stride]
 
@@ -248,22 +256,62 @@ def compute_total_core_power(filepath, stride=10):
     return times, powers
 
 
-def plot_total_core_power(filepath, stride=10, save_path=None):
+QUANTITY_LABELS = {
+    "average_density": "Avg Core Density (kg/m³)",
+    "average_enthalpy": "Avg Core Enthalpy (J/kg)",
+    "average_mass_flow_rate": "Avg Core Mass Flow Rate (kg/s)",
+    "average_pressure": "Avg Core Pressure (Pa)",
+    "average_temperature": "Avg Core Temperature (K)",
+    "average_velocity": "Avg Core Velocity (m/s)",
+    "power": "Total Core Power (MW)",
+}
+
+
+def compute_quantity(filepath, quantity, stride=10, state=1):
     """
-    Plot total core power versus time sampled at every ``stride`` timesteps.
+    Compute a single quantity vs time, sampled every ``stride`` timesteps.
+
+    ``power`` is special-cased to the volume-weighted total core power (W);
+    every other name in SCALAR_DATASETS is the plain core-node spatial mean.
+
+    Args:
+        filepath: path to the H5 file
+        quantity: dataset name, e.g. 'average_temperature' or 'power'
+        stride:   sample every Nth timestep (default 10)
+        state:    state number to read from (i.e. 'solution/fluid_data_000<state>'; default 1)
+
+    Returns:
+        times  (n,) float array – seconds
+        values (n,) float array
+    """
+    if quantity == "power":
+        return compute_total_core_power(filepath, stride=stride, state=state)
+    times, results = compute_core_averages(filepath, [quantity], stride=stride, state=state)
+    return times, results[quantity]
+
+
+def plot_quantity(filepath, quantity, stride=10, save_path=None, state=1):
+    """
+    Plot a single quantity versus time sampled at every ``stride`` timesteps.
 
     Args:
         filepath:  path to the H5 file
+        quantity:  dataset name, e.g. 'average_temperature' or 'power'
         stride:    sample every Nth timestep (default 10)
         save_path: if given, save the figure to this path instead of showing it
+        state:     state number to read from (i.e. 'solution/fluid_data_000<state>'; default 1)
     """
-    times, powers = compute_total_core_power(filepath, stride=stride)
+    times, values = compute_quantity(filepath, quantity, stride=stride, state=state)
+    if quantity == "power":
+        values = values / 1e6
+
+    ylabel = QUANTITY_LABELS.get(quantity, quantity)
 
     fig, ax = plt.subplots(figsize=(9, 5))
-    ax.plot(times, powers / 1e6, linewidth=1.2)
+    ax.plot(times, values, linewidth=1.2)
     ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Total Core Power (MW)")
-    ax.set_title("Total Core Power vs. Time")
+    ax.set_ylabel(ylabel)
+    ax.set_title(f"{ylabel} vs. Time")
     ax.grid(True, linestyle="--", alpha=0.5)
     fig.tight_layout()
 
@@ -276,7 +324,54 @@ def plot_total_core_power(filepath, stride=10, save_path=None):
     return fig, ax
 
 
-def compute_core_averages(filepath, quantities, stride=10):
+def plot_quantity_comparison(filepath1, filepath2, quantity, labels=None, stride=10, save_path=None, state=1):
+    """
+    Plot a single quantity vs time for two H5 files on the same axes.
+
+    Args:
+        filepath1:  path to first H5 file
+        filepath2:  path to second H5 file
+        quantity:   dataset name, e.g. 'average_temperature' or 'power'
+        labels:     (label1, label2) tuple; defaults to the file basenames
+        stride:     sample every Nth timestep (default 10)
+        save_path:  save figure here instead of displaying
+        state:      state number to read from (i.e. 'solution/fluid_data_000<state>'; default 1)
+    """
+    import os
+
+    if labels is None:
+        labels = (
+            os.path.splitext(os.path.basename(filepath1))[0],
+            os.path.splitext(os.path.basename(filepath2))[0],
+        )
+
+    t1, v1 = compute_quantity(filepath1, quantity, stride=stride, state=state)
+    t2, v2 = compute_quantity(filepath2, quantity, stride=stride, state=state)
+    if quantity == "power":
+        v1, v2 = v1 / 1e6, v2 / 1e6
+
+    ylabel = QUANTITY_LABELS.get(quantity, quantity)
+
+    fig, ax = plt.subplots(figsize=(9, 5))
+    ax.plot(t1, v1, linewidth=1.2, label=labels[0])
+    ax.plot(t2, v2, linewidth=1.2, label=labels[1], linestyle="--")
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel(ylabel)
+    ax.set_title(f"{ylabel} vs. Time")
+    ax.legend()
+    ax.grid(True, linestyle="--", alpha=0.5)
+    fig.tight_layout()
+
+    if save_path:
+        fig.savefig(save_path, dpi=150)
+        print(f"Figure saved to {save_path}")
+    else:
+        plt.show()
+
+    return fig, ax
+
+
+def compute_core_averages(filepath, quantities, stride=10, state=1):
     """
     Compute spatial mean over core nodes for one or more datasets at each timestep.
 
@@ -286,6 +381,7 @@ def compute_core_averages(filepath, quantities, stride=10):
         filepath:   path to the H5 file
         quantities: list of dataset names, e.g. ['average_temperature', 'average_velocity']
         stride:     sample every Nth timestep (default 10)
+        state:      state number to read from (i.e. 'solution/fluid_data_000<state>'; default 1)
 
     Returns:
         times   (n,) float array – seconds
@@ -293,10 +389,10 @@ def compute_core_averages(filepath, quantities, stride=10):
     """
     core = _get_core_nodes(filepath)
     core_indices = np.array([idx for idx, _ in core], dtype=int)
-    dt = _dt(filepath)
+    dt = _dt(filepath, state=state)
 
     with h5py.File(filepath, "r") as f:
-        fd1 = f["solution/fluid_data_0001"]
+        fd1 = f[_fluid_data_path(state)]
         all_keys = _sorted_timestep_keys(fd1)
         selected = all_keys[::stride]
 
@@ -313,7 +409,7 @@ def compute_core_averages(filepath, quantities, stride=10):
     return times, results
 
 
-def compute_total_delayed_source(filepath, stride=10):
+def compute_total_delayed_source(filepath, stride=10, state=1):
     """
     Compute total core-average delayed neutron source (sum_i lambda_i * C_i_bar)
     at each sampled timestep, where C_i_bar is the spatial mean of precursor
@@ -322,6 +418,7 @@ def compute_total_delayed_source(filepath, stride=10):
     Args:
         filepath: path to the H5 file
         stride:   sample every Nth timestep (default 10)
+        state:    state number to read from (i.e. 'solution/fluid_data_000<state>'; default 1)
 
     Returns:
         times   (n,) float array – seconds
@@ -330,7 +427,7 @@ def compute_total_delayed_source(filepath, stride=10):
     """
     core = _get_core_nodes(filepath)
     core_indices = np.array([idx for idx, _ in core], dtype=int)
-    dt = _dt(filepath)
+    dt = _dt(filepath, state=state)
     n_groups = len(PRECURSOR_LAMBDAS)
 
     prec_names = [
@@ -338,7 +435,7 @@ def compute_total_delayed_source(filepath, stride=10):
     ]
 
     with h5py.File(filepath, "r") as f:
-        fd1 = f["solution/fluid_data_0001"]
+        fd1 = f[_fluid_data_path(state)]
         all_keys = _sorted_timestep_keys(fd1)
         selected = all_keys[::stride]
 
@@ -359,35 +456,24 @@ def compute_total_delayed_source(filepath, stride=10):
     return times, source
 
 
-def plot_power_comparison(filepath1, filepath2, labels=None, stride=10, save_path=None):
+def plot_delayed_source(filepath, stride=10, save_path=None, state=1):
     """
-    Plot total core power vs time for two H5 files on the same axes.
+    Plot the core-average delayed neutron source (sum_i lambda_i * C_i_bar)
+    vs. time for a single H5 file.
 
     Args:
-        filepath1:  path to first H5 file
-        filepath2:  path to second H5 file
-        labels:     (label1, label2) tuple; defaults to the file basenames
-        stride:     sample every Nth timestep (default 10)
-        save_path:  save figure here instead of displaying
+        filepath:  path to the H5 file
+        stride:    sample every Nth timestep (default 10)
+        save_path: if given, save the figure to this path instead of showing it
+        state:     state number to read from (i.e. 'solution/fluid_data_000<state>'; default 1)
     """
-    import os
-
-    if labels is None:
-        labels = (
-            os.path.splitext(os.path.basename(filepath1))[0],
-            os.path.splitext(os.path.basename(filepath2))[0],
-        )
-
-    t1, p1 = compute_total_core_power(filepath1, stride=stride)
-    t2, p2 = compute_total_core_power(filepath2, stride=stride)
+    times, source = compute_total_delayed_source(filepath, stride=stride, state=state)
 
     fig, ax = plt.subplots(figsize=(9, 5))
-    ax.plot(t1, p1 / 1e6, linewidth=1.2, label=labels[0])
-    ax.plot(t2, p2 / 1e6, linewidth=1.2, label=labels[1], linestyle="--")
+    ax.plot(times, source, linewidth=1.2)
     ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Total Core Power (MW)")
-    ax.set_title("Total Core Power vs. Time")
-    ax.legend()
+    ax.set_ylabel(r"$\sum_i \lambda_i \bar{C}_i$ (kg m$^{-3}$ s$^{-1}$)")
+    ax.set_title("Core-Avg Delayed Neutron Source vs. Time")
     ax.grid(True, linestyle="--", alpha=0.5)
     fig.tight_layout()
 
@@ -400,7 +486,7 @@ def plot_power_comparison(filepath1, filepath2, labels=None, stride=10, save_pat
     return fig, ax
 
 
-def plot_full_comparison(filepath1, filepath2, labels=None, stride=10, save_path=None):
+def plot_full_comparison(filepath1, filepath2, labels=None, stride=10, save_path=None, state=1):
     """
     Four-panel comparison plot: total core power, avg core temperature, avg core
     velocity, and core-average delayed neutron source (sum_i lambda_i * C_i_bar).
@@ -411,6 +497,7 @@ def plot_full_comparison(filepath1, filepath2, labels=None, stride=10, save_path
         labels:     (label1, label2) tuple; defaults to file basenames
         stride:     sample every Nth timestep (default 10)
         save_path:  save figure here instead of displaying
+        state:      state number to read from (i.e. 'solution/fluid_data_000<state>'; default 1)
     """
     import os
 
@@ -422,12 +509,12 @@ def plot_full_comparison(filepath1, filepath2, labels=None, stride=10, save_path
 
     quantities = ["average_temperature", "average_velocity"]
 
-    t1_pwr, p1 = compute_total_core_power(filepath1, stride=stride)
-    t2_pwr, p2 = compute_total_core_power(filepath2, stride=stride)
-    t1, avg1 = compute_core_averages(filepath1, quantities, stride=stride)
-    t2, avg2 = compute_core_averages(filepath2, quantities, stride=stride)
-    t1_dn, dn1 = compute_total_delayed_source(filepath1, stride=stride)
-    t2_dn, dn2 = compute_total_delayed_source(filepath2, stride=stride)
+    t1_pwr, p1 = compute_total_core_power(filepath1, stride=stride, state=state)
+    t2_pwr, p2 = compute_total_core_power(filepath2, stride=stride, state=state)
+    t1, avg1 = compute_core_averages(filepath1, quantities, stride=stride, state=state)
+    t2, avg2 = compute_core_averages(filepath2, quantities, stride=stride, state=state)
+    t1_dn, dn1 = compute_total_delayed_source(filepath1, stride=stride, state=state)
+    t2_dn, dn2 = compute_total_delayed_source(filepath2, stride=stride, state=state)
 
     def _make_plot(t1, y1, t2, y2, ylabel, title, path):
         fig, ax = plt.subplots(figsize=(9, 5))
@@ -501,12 +588,17 @@ def main():
         help="Read and print a single timestep's data"
     )
     parser.add_argument(
-        "--plot-power", action="store_true",
-        help="Plot total core power vs time (sampled every --stride timesteps)"
+        "--plot-quantity", default=None, metavar="QUANTITY", choices=SCALAR_DATASETS,
+        help="Plot a quantity vs time (sampled every --stride timesteps); "
+             f"choices: {', '.join(SCALAR_DATASETS)}"
+    )
+    parser.add_argument(
+        "--plot-delayed-source", action="store_true",
+        help="Plot core-avg delayed neutron source vs time (sampled every --stride timesteps)"
     )
     parser.add_argument(
         "--compare", default=None, metavar="FILEPATH2",
-        help="Second H5 file to overlay on the power plot for comparison"
+        help="Second H5 file to overlay on the --plot-quantity plot for comparison"
     )
     parser.add_argument(
         "--labels", nargs=2, default=None, metavar=("LABEL1", "LABEL2"),
@@ -520,6 +612,10 @@ def main():
         "--save", default=None,
         help="Save the plot to this file path instead of displaying it"
     )
+    parser.add_argument(
+        "--state", type=int, default=1,
+        help="State number to read from, i.e. 'solution/fluid_data_000<state>' (default: 1)"
+    )
     args = parser.parse_args()
 
     if args.full_comparison:
@@ -530,23 +626,31 @@ def main():
             labels=args.labels,
             stride=args.stride,
             save_path=args.save,
+            state=args.state,
         )
         return
 
-    if args.plot_power:
+    if args.plot_quantity:
         if args.compare:
-            plot_power_comparison(
-                args.filepath, args.compare,
+            plot_quantity_comparison(
+                args.filepath, args.compare, args.plot_quantity,
                 labels=args.labels,
                 stride=args.stride,
                 save_path=args.save,
+                state=args.state,
             )
         else:
-            plot_total_core_power(args.filepath, stride=args.stride, save_path=args.save)
+            plot_quantity(args.filepath, args.plot_quantity, stride=args.stride,
+                           save_path=args.save, state=args.state)
+        return
+
+    if args.plot_delayed_source:
+        plot_delayed_source(args.filepath, stride=args.stride,
+                             save_path=args.save, state=args.state)
         return
 
     if args.timestep is not None:
-        data = read_timestep(args.filepath, args.timestep)
+        data = read_timestep(args.filepath, args.timestep, state=args.state)
         t = data.get("time")
         print(f"Timestep {args.timestep}" + (f" (t = {t:.4f} s)" if t else ""))
         for name in SCALAR_DATASETS:
@@ -558,12 +662,12 @@ def main():
                 print(f"  {pk}: min={arr.min():.6g}  max={arr.max():.6g}")
         return
 
-    summarize(args.filepath)
+    summarize(args.filepath, state=args.state)
 
     if args.stride != 1 or args.start is not None or args.stop is not None:
         print(f"\nLoading solution (stride={args.stride}) ...")
         sol = read_solution(args.filepath, stride=args.stride,
-                            start=args.start, stop=args.stop)
+                            start=args.start, stop=args.stop, state=args.state)
         print(f"Loaded {len(sol['timestep_indices'])} timesteps.")
         for name in SCALAR_DATASETS:
             if name in sol:

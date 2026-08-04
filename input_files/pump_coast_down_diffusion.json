@@ -131,18 +131,17 @@
       "fluid": "FLiBe"
     }
   },
-  "states": [
+    "states": [
     {},
-    {
-      "transient": {
-        "time_duration": 0.20,
-        "time_step": 0.001,
-        "scheme": "BDF1",
-        "save_all_data": false
+    {"transient": {
+                "time_duration": 2000.00,
+                "time_step": 2.0,
+                "scheme": "BDF2",
+                "save_all_data": false
       }
     },
     {"transient": {
-                "time_duration": 25.00,
+                "time_duration": 125.00,
                 "time_step": 0.001,
                 "scheme": "BDF1",
                 "save_all_data": false
