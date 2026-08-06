@@ -44,6 +44,7 @@ class PointKineticsStrategy(NeutronicsStrategy):
         self._amplitude = 1.0
         self._flux_shape = _build_profile(self._FLUX_PARAMETERS, len(self._core_nodes))
         self._adjoint = _build_profile(self._ADJOINT_PARAMETERS, len(self._core_nodes))
+        self._adjoint /= np.sum(self._adjoint) / len(self._adjoint)
         self._n_0 = 2.43 * self._mean_neutron_lifetime * initial_power / (3.24e-11)
         self._rho_0 = 0.0
 
@@ -96,7 +97,7 @@ class PointKineticsStrategy(NeutronicsStrategy):
     def get_core_average(self, data):
         average = 0.0
         for index, node in enumerate(self._core_nodes):
-            average += data[node.index] * self._adjoint[index] / len(self._adjoint)
+            average += data[node.index] * self._adjoint[index] / sum(self._adjoint)
         return average
 
     def get_reactivity_feedback(self):
@@ -151,8 +152,8 @@ class PointKineticsSteadyStateStrategy(PointKineticsSolverStrategy):
 
     def get_new_amplitude(self):
         self._pk.update_initial_temperature()
-        self._pk._beta_effective = (
-            self._pk.get_core_precursor_sum() * self._pk.mean_neutron_lifetime
+        self._pk.set_initial_reactivity(
+            - self._pk.get_core_precursor_sum() * self._pk.mean_neutron_lifetime + self._pk.beta_effective
         )
         print(f"calculate solution: {self._pk.calculate_solution()}")
         return 1.0
@@ -178,9 +179,65 @@ class PointKineticsTransientStrategy(PointKineticsSolverStrategy):
             "Initial temperature:",
             self._pk._t0,
         )
+        core_avg_temp = 0.0
+        total_core_precursors = 0.0
+        for index, node in enumerate(self._pk._core_nodes):
+            core_avg_temp += self._pk._temperature[node.index]
+            total_core_precursors += self._pk._precursor_source[node.index]
+        print(f"core average temperature: {core_avg_temp/len(self._pk._core_nodes)}")
         print(f"mean neutron lifetime: {self._pk.mean_neutron_lifetime}")
         print(f"beta effective: {self._pk.beta_effective}")
         print(f"Gamma: {gamma}")
         print(f"Core precursor sum: {self._pk.get_core_precursor_sum()}")
+        print(f"mean of adjoint: {sum(self._pk._adjoint)/len(self._pk._adjoint)}")
+        print(f"Total core precursors: {total_core_precursors/ self._pk._n_0}")
         print(f"New amplitude: {new_amplitude}")
+        print(f"computed dp/dt: {(new_amplitude - self._pk.amplitude) / self._dt}")
+        print(f"calculated dp/dt: {new_amplitude * gamma + pc_sum}")
+
+        return new_amplitude
+
+
+class PointKineticsNumericalTransientStrategy(PointKineticsSolverStrategy):
+    """
+    Theta-method (generalized trapezoidal) solver for the same frozen-coefficient
+    amplitude equation used by ``PointKineticsTransientStrategy``:
+
+        dn/dt = gamma * n + pc_sum,  gamma and pc_sum held constant over dt
+
+    theta=0.0 -> forward Euler (explicit)
+    theta=0.5 -> Crank-Nicolson (default)
+    theta=1.0 -> backward Euler (implicit)
+
+    Since the ODE is linear and gamma/pc_sum are frozen over the step, the
+    theta update has a closed-form algebraic solution (no Newton iteration
+    needed), making it a direct numerical counterpart to compare against the
+    exact exponential solution used by PointKineticsTransientStrategy.
+    """
+
+    def __init__(self, point_kinetics_strategy, dt, theta=0.5):
+        self._pk = point_kinetics_strategy
+        self._dt = dt
+        self._theta = theta
+
+    def get_new_amplitude(self):
+        gamma = (
+            self._pk.get_reactivity_feedback() - self._pk.beta_effective
+        ) / self._pk.mean_neutron_lifetime
+        pc_sum = self._pk.get_core_precursor_sum()
+        n_old = self._pk.amplitude
+        theta = self._theta
+        dt = self._dt
+
+        numerator = n_old * (1.0 + (1.0 - theta) * dt * gamma) + dt * pc_sum
+        denominator = 1.0 - theta * dt * gamma
+        new_amplitude = numerator / denominator
+
+        print(f"rho: {self._pk.get_reactivity_feedback()}")
+        print(f"Gamma: {gamma}")
+        print(f"Core precursor sum: {pc_sum * self._pk.mean_neutron_lifetime}")
+        print(f"theta: {theta}")
+        print(f"New amplitude: {new_amplitude}")
+        print(f"computed dp/dt: {(new_amplitude - n_old) / dt}")
+
         return new_amplitude

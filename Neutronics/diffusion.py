@@ -296,7 +296,7 @@ class DiffusionTransientStrategy(DiffusionSolverStrategy):
         )
 
         for i in range(self._diffusion.max_iterations):
-            matrix_a, vector_b, _ = self._diffusion.set_up_matrix(
+            matrix_a, vector_b, vector_f = self._diffusion.set_up_matrix(
                 k=self._diffusion.k_eff
             )
 
@@ -327,6 +327,11 @@ class DiffusionTransientStrategy(DiffusionSolverStrategy):
             self._diffusion.flux = self._relax * self._diffusion.flux + (1 - self._relax) * new
             if diff < self._diffusion.tolerance:
                 print(f"Converged after {i} iterations with diff = {diff}")
+                f_new = (
+                                vector_f @ self._diffusion.flux + self._diffusion.total_precursor_sum()
+                            )
+                print(f"Delayed Neutron fraction: {self._diffusion.total_precursor_sum() / f_new}")
                 break
             elif i == self._diffusion.max_iterations - 1:
                 print(f"Did not converge after {i} iterations with diff = {diff}")
+

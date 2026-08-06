@@ -2,93 +2,145 @@
   "components": {
     "pipe": {
       "Fuel Channel": {
-        "L": 164.00,
-        "n": 41,
+        "L": 162.56,
+        "cross_section_name": "stadium",
+        "stadium_width": 1.016,
+        "stadium_length": 3.048,
+        "bounding_box_dx": 5.08,
+        "bounding_box_dy": 5.08,
+        "n": 16,
         "theta": 0,
-        "R": 16.00,
+        "num_representative": 1140,
+        "roughness": 0.0045,
         "tag": "core"
       },
       "Reactor-Outlet to FF-100": {
-        "L": 184.00,
+        "L": 182.88,
         "Ac": 129.06958,
         "Dh": 12.81938,
-        "R": 6.40,
-        "n": 46,
+        "R": 6.40969,
+        "n": 18,
         "theta": 90,
         "roughness": 0.0045,
         "Klossinlet": 2.5
       },
       "FF-100 to Pump Inlet": {
-        "L": 72.00,
+        "L": 71.28,
         "Ac": 129.06958,
         "Dh": 12.81938,
-        "R": 6.4,
-        "n": 18,
+        "R": 6.40969,
+        "n": 20,
         "theta": 0,
         "roughness": 0.0045
       },
       "Pump1": {
-        "L": 12.00,
+        "L": 10,
         "Ac": 129.06958,
         "Dh": 12.81938,
-        "R": 6.4,
+        "R": 6.40969,
         "n": 20,
         "theta": -90,
         "roughness": 0.0045
       },
       "Pump-Discharge to FF-101": {
-        "L": 96.00,
+        "L": 96.68,
         "Ac": 129.06958,
         "Dh": 12.81938,
-        "R": 6.4,
-        "n": 24,
+        "R": 6.40969,
+        "n": 20,
         "theta": -90,
         "roughness": 0.0045,
         "Klossinlet": 7.0
       },
       "Heat Exchanger": {
-        "L": 244.00,
-        "Dh": 12.81938,
-        "R": 6.4,
-        "n": 61,
+        "L": 243.84,
+        "Dh": 5.61,
+        "R": 2.805,
+        "n": 25,
         "theta": -90,
         "roughness": 0.0045
       },
       "HX-Outlet to FF-102": {
-        "L": 276.00,
+        "L": 112.721,
         "Ac": 129.06958,
         "Dh": 12.81938,
-        "R": 6.4,
-        "n": 69,
+        "R": 6.40969,
+        "n": 17,
         "theta": -180,
         "roughness": 0.0045
       },
       "FF-102 to Reactor-Inlet": {
-        "L": 168.00,
+        "L": 167.64,
         "Ac": 129.06958,
         "Dh": 12.81938,
-        "R": 6.4,
-        "n": 42,
+        "R": 6.40969,
+        "n": 31,
         "theta": 90,
+        "roughness": 0.0045
+      }
+    },
+    "annulus": {
+      "Outer Annulus": {
+        "R_inner": 70.0,
+        "R_outer": 73.66,
+        "L": 127.69,
+        "n": 12,
+        "theta": 180,
         "roughness": 0.0045
       }
     },
     "nozzle": {
       "Lower Plenum": {
-        "L": 20.00,
-        "R_inlet": 6.4,
-        "R_outlet": 16.0,
-        "theta": 0,
-        "n": 5,
-        "Klossinlet": 7.0
-      },
-      "Upper Plenum": {
-        "L": 20.00,
-        "R_inlet": 16.0,
-        "R_outlet": 6.4,
-        "theta": 0,
+        "L": 18.75,
+        "R_inlet": 69.85,
+        "R_outlet": 32.300916100156975,
+        "theta": 180,
         "n": 50,
-        "Klossinlet": 7.0
+        "roughness": 0.0045,
+        "Klossinlet": 22.0
+      },
+      "CH to PL Upper": {
+        "L": 1e-3,
+        "n" : 50,
+        "R_inlet": 32.300916100156975,
+        "R_outlet": 69.85,
+        "roughness": 0.0045
+      },
+      "PL to Pipe Upper": {
+        "L": 25.40,
+        "R_inlet": 69.85,
+        "R_outlet": 6.40969,
+        "n": 10,
+        "roughness": 0.0045,
+        "Klossoutlet": 5.0
+      }
+    },
+    "pump": {
+      "Fuel Pump": {
+        "Ac": 324.2927866,
+        "Dh": 20.32,
+        "V": 25000,
+        "height": 0.000000001
+      }
+    },
+    "simple_tank": {
+      "Tank to apply BC": {
+        "R": 6.40969,
+        "L": 0.1,
+        "n": 1,
+        "theta": 90,
+        "transverse_area": 1,
+        "transverse_height": 1
+      }
+    },
+    "simple_hx" : {
+      "simple heat exchanger" : {
+        "length" : 182.88,
+        "shell_volume" : 172732.76,
+        "effective_heated_area" : 235973.72,
+        "n": 100,
+        "theta": -90,
+        "roughness": 0.0045
       }
     }
   },
@@ -96,35 +148,37 @@
     "wallFunction": {
       "heat removal": {
         "eq": "enthalpy",
-        "value": "800",
+        "value": "803.53",
         "note": "kelvin"
       }
     },
     "bodyForce": {
       "pump momentum": {
         "eq": "momentum",
-        "value": "1e5"
+        "value": "2.56e5"
       }
     }
   },
   "system": {
     "simple_loop": {
       "loop": [
-        { "component": "FF-102 to Reactor-Inlet" },
-        { "component": "Lower Plenum" },
         { "component": "Fuel Channel" },
-        { "component": "Upper Plenum" },
+        { "component": "CH to PL Upper" },
         { "component": "Reactor-Outlet to FF-100" },
         { "component": "FF-100 to Pump Inlet" },
         { "component": "Pump1", "BodyForces": ["pump momentum"] },
         { "component": "Pump-Discharge to FF-101" },
-        { "component": "Heat Exchanger", "WallFunctions": ["heat removal"] },
-        { "component": "HX-Outlet to FF-102" }
+        { "component": "simple heat exchanger", "WallFunctions": ["heat removal"] },
+        { "component": "HX-Outlet to FF-102" },
+        { "component": "FF-102 to Reactor-Inlet" },
+        { "component": "Outer Annulus" },
+        { "component": "Lower Plenum" }
       ],
       "boundary_conditions": {
         "pressure point": {
           "boundary_type": "PressureReferenceBC",
-          "surface": 12,
+          "surface": 116,
+          "variable": "pressure",
           "value": 149616.2
         }
       },
@@ -134,8 +188,15 @@
   "states": [
     {},
     {"transient": {
-                "time_duration": 25.00,
-                "time_step": 0.001,
+                "time_duration": 2000.00,
+                "time_step": 2.0,
+                "scheme": "BDF2",
+                "save_all_data": false
+      }
+    },
+    {"transient": {
+                "time_duration": 125.00,
+                "time_step": 0.05,
                 "scheme": "BDF1",
                 "save_all_data": false
       },
@@ -164,8 +225,9 @@
     "core_nodes": ["Fuel Channel"],
     "mean_neutron_lifetime": 1.847e-4,
     "beta_effective": 0.006502,
-    "alpha_T": -4.050199E-05,
-    "initial_power": 1e6,
-    "comment": "mean neutron lifetime and alpha_T are from mpact runs"
+    "alpha_T":  -4.050199E-05,
+    "initial_power": 1e7,
+    "null_transient": true,
+    "comment": "mean neutron lifetime and alpha_T are from mpact runs -8.1E-5 or -5.62E-06"
   }
 }
