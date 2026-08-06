@@ -20,6 +20,7 @@ class Simulation:
         self._run_null = bool(
             self._input_dict.get("neutronics", {}).get("null_transient", False)
         )
+        self._initial_power = self._input_dict.get("neutronics", {}).get("initial_power", 1e6)
         self._neutronics = Simulation._build_neutronics_strategy(
             self._input_dict, self._core_nodes
         )
@@ -178,7 +179,6 @@ class Simulation:
             self._temperature[node.index] = self._syth.get_fluid_node_value(
                 "temperature", node.index
             )
-            # self._temperature[node.index] = 1200.0
             precursor = self._syth.get_total_delayed_neutron_sources(node.index)
             self._precursor_source[node.index] = precursor
 
@@ -216,7 +216,7 @@ class Simulation:
             print(f"Time: {current_time:.3f}")
             print(f"core temperature : {self._neutronics.get_core_temperature()}")
             print(
-                            f"Total precursors: {self.get_total_precursors() / (2.43 * 1e6 / self._kappa)}"
+                            f"Total precursors: {self.get_total_precursors() / (2.43 * self._initial_power / self._kappa)}"
                         )
 
     def _run_transient(self):
@@ -236,7 +236,7 @@ class Simulation:
 
             current_time += self._state.time_step
             print(
-                f"Total precursors: {self.get_total_precursors() / (2.43 * 1e6 / self._kappa)}"
+                f"Total precursors: {self.get_total_precursors() / (2.43 * self._initial_power / self._kappa)}"
             )
             print(f"core temperature : {self._neutronics.get_core_temperature()}.  diff : {self._neutronics.get_core_temperature() - original_temp}")
 
@@ -253,7 +253,7 @@ class Simulation:
         self._neutronics.update_power()
         self._syth.write_solution_to_input_file()
         print(
-            f"Total precursors: {self.get_total_precursors() / (2.43 * 1e6 / self._kappa)}"
+            f"Total precursors: {self.get_total_precursors() / (2.43 * self._initial_power / self._kappa)}"
         )
 
     def get_total_precursors(self):
