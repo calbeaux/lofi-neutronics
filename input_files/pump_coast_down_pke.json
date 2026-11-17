@@ -172,7 +172,7 @@
     "mean_neutron_lifetime": 1.847e-4,
     "beta_effective": 0.006502,
     "alpha_T":  -5.62E-06,
-    "initial_power": 1e6,
+    "initial_power": 1e7,
     "null_transient": true,
     "comment": "mean neutron lifetime and alpha_T are from mpact runs -8.1E-5 or -5.62E-06"
   }

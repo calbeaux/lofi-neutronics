@@ -67,29 +67,35 @@ class Syth:
         """
         _raw.syTH_setNodePower(node_index, node_power)
 
-    def set_neutron_precursor_source_coupled_to_power_factor(
+    def set_precursor_source_per_power(
         self, factor: float
     ) -> None:
         """
-        Sets the neutron precursor source coupled to power factor.
+        Sets the precursor source per unit power.
 
         Args:
             - factor (float): The coupling factor.
         """
-        _raw.syTH_setNeutronPrecursorSourceCoupledToPowerFactor(factor)
+        _raw.syTH_setPrecursorSourcePerPower(factor)
 
-    def get_total_delayed_neutron_sources(self, node_index: int) -> float:
+    def stage_previous_concentration(
+        self, species_id: int, node_index: int, concentration: float
+    ) -> None:
+        """Stage a previous cell concentration (#/m³) for a 1-based group ID."""
+        _raw.syTH_stagePreviousConcentration(species_id, node_index, concentration)
+
+    def get_delayed_neutron_emissions(self, node_index: int) -> float:
         """
-        Gets the total delayed neutron sources for a node.
+        Gets the delayed neutron emissions for a node.
 
         Args:
             - node_index (int): The index of the node.
 
         Returns:
-            float: The total delayed neutron sources.
+            float: The delayed neutron emissions.
         """
         return self._call_with_output(
-            _raw.syTH_getTotalDelayedNeutronSources,
+            _raw.syTH_getDelayedNeutronEmissions,
             node_index,
             output_type=_raw.SRK,
         )
@@ -108,4 +114,19 @@ class Syth:
         return self._call_with_output(_raw.syTH_getIterations, output_type=_raw.SIK)
 
     def get_node_count(self) -> int:
-        return self._call_with_output(_raw.syTH_getNodeCount, output_type=_raw.SIK)
+        """Return the full fluid-mesh count; the C API reports coupled nodes only."""
+        import h5py
+
+        with h5py.File(self.filename, "r") as input_file:
+            return int(input_file["fluid_solve/fluid_mesh/nodes/number_of_nodes"][()])
+
+    def get_coupled_node_count(self) -> int:
+        return self._call_with_output(
+            _raw.syTH_getCoupledNodeCount, output_type=_raw.SIK
+        )
+
+    def get_first_coupled_node(self) -> int:
+        """Return the first coupled node's index; requires a nonempty coupled core."""
+        return self._call_with_output(
+            _raw.syTH_getFirstCoupledNode, output_type=_raw.SIK
+        )

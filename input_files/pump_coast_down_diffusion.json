@@ -16,7 +16,7 @@
         "n": 46,
         "theta": 90,
         "roughness": 0.0045,
-        "Klossinlet": 2.5
+        "Klossinlet": 0.25
       },
       "FF-100 to Pump Inlet": {
         "L": 72.00,
@@ -44,7 +44,7 @@
         "n": 24,
         "theta": -90,
         "roughness": 0.0045,
-        "Klossinlet": 7.0
+        "Klossinlet": 0.7
       },
       "Heat Exchanger": {
         "L": 244.00,
@@ -80,7 +80,7 @@
         "R_outlet": 16.0,
         "theta": 0,
         "n": 5,
-        "Klossinlet": 7.0
+        "Klossinlet": 0.7
       },
       "Upper Plenum": {
         "L": 20.00,
@@ -88,7 +88,7 @@
         "R_outlet": 6.4,
         "theta": 0,
         "n": 50,
-        "Klossinlet": 7.0
+        "Klossinlet": 0.7
       }
     }
   },
@@ -134,20 +134,10 @@
     "states": [
     {},
     {"transient": {
-                "time_duration": 2000.00,
+                "time_duration": 4.00,
                 "time_step": 2.0,
                 "scheme": "BDF2",
                 "save_all_data": false
-      }
-    },
-    {"transient": {
-                "time_duration": 125.00,
-                "time_step": 0.001,
-                "scheme": "BDF1",
-                "save_all_data": false
-      },
-      "bodyForce": {
-          "pump momentum": "5e3 * exp(-t/5)"
       }
     }
     ],
@@ -170,7 +160,7 @@
     "type": "diffusion",
     "core_nodes": ["Fuel Channel"],
     "beta_effective": 0.006502,
-    "initial_power": 1e6,
+    "initial_power": 1e7,
     "substeps": 20,
     "null_transient": true
   }

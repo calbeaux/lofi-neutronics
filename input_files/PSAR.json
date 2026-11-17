@@ -1,0 +1,274 @@
+{
+    "comment": "Simplified ACU MSRR primary loop based on primary_loop.json and PSAR Revision 2 (July 2024), Chapter 4. SI units. Fixed 10 MW axial cosine heating and prescribed HX wall temperature; steady and transient states.",
+    "model_notes": {
+        "sources": [
+            "Chapter 4, Sections 4.1 and 4.6.1.2 describe vessel -> RAV -> pump -> shell-side HX -> vessel. This simplified model omits the RAV and connects the vessel hot riser directly to the pump.",
+            "Table 4.1-1 (printed p. 4-5 / PDF p. 260): 1 MW thermal power; 650 C maximum operating temperature.",
+            "Table 4.2-1 (printed p. 4-20 / PDF p. 275): fuel-channel diameter 0.03016 m, core height 1.5168 m, graphite lattice pitch 0.1016 m, outer lattice radius 0.65 m.",
+            "Section 4.2.1.1 (printed p. 4-6): about 0.4 m3 fuel salt in vessel and 0.5 m3 in operating loop; drain-tank inventory excluded.",
+            "Section 4.5.4.4 (printed p. 4-43): baseline average vessel temperature 873.15 K and vessel pressure 150000 Pa. These are reference conditions, not imposed temperature or flow constraints."
+        ],
+        "geometry_assumptions": [
+            "148 explicit fuel channels in a hex_core at 0.1016 m nearest-neighbor pitch. A 151-site triangular-lattice footprint is clipped to the 0.65 m lattice radius allowing for channel radius, then three interior sites are omitted in a threefold pattern to obtain 148 channels. This is an assumed channel map, not a PSAR-specified channel count or exact control-rod layout; bypass flow remains unresolved.",
+            "Core liquid volume 0.160377186788 m3. Each equivalent plenum holds 0.119811406606 m3, giving 0.4 m3 total vessel salt. Plenum length 0.2 m and equivalent radii are modeling choices. The finite plenums remain separate loop components. The hex_core internal plenums, manifolds and coupling nozzles have negligible length and inventory.",
+            "Connecting pipe ID 0.05898 m is an approximate bore for the nominal 2.5-inch Schedule 80 piping described in Section 4.1.1; nominal pipe size is not used as bore.",
+            "Pipe routing, riser height and pump liquid volume 0.005 m3 are assumptions. The RAV is omitted; the hot riser is extended from 0.8 m to 1.1 m to replace its 0.3 m height and retain the pump elevation. The 3.0168 m cold downcomer and 2.55829 m cold return close the loop in elevation and plan within roundoff. Figure 4.1-3 is not a dimensioned piping drawing.",
+            "HX length 1.8288 m inherited from primary_loop.json. Shell holdup remains 0.0456700208068 m3 and effective heated area 30 m2 remains an assumed surrogate, not a Chapter 4 specification. Total loop salt inventory is approximately 0.47082 m3 (471 L) after removing the RAV; the approximate PSAR 500 L inventory is not imposed.",
+            "Auto nozzles provide internal area transitions with negligible added inventory. An explicit negligible-length nozzle closes the last pipe into the lower plenum because automatic transitions do not handle the last-to-first connection."
+        ],
+        "controllers_and_reference": [
+            "Core heat source is a fixed axial cosine in W/m3, evaluated in Core inlet-relative z and cell-averaged by the frontend. Its amplitude is 10 MW * pi / (2 * core liquid volume), so heating integrates to 10 MW over the 148 explicit fuel channels. Heating is identical across channels; negligible internal connectors add negligible power and finite external plenums are unheated. This 10 MW comparison case exceeds the cited PSAR 1 MW reference power.",
+            "Pump Momentum 39662.81 Pa is inherited from primary_loop.json. It is a prescribed pressure rise, not volumetric forcing, a pump curve, or a PSAR-calibrated flow rate.",
+            "HX Wall Function fixes the effective shell-side wall temperature at 832 K, inherited from primary_loop.json. The solver supplies its heat-transfer correlation. Heat removal depends on the solution; 1 MW is not prescribed as heat flux.",
+            "PressureReferenceBC surface 0 selects the cell on the toNode side of mesh surface 0 using the existing syTH convention. With the current mesh this is in the lower plenum. Reference pressure is 150000 Pa absolute, based on the Chapter 4 vessel baseline; this is not the RAV cover-gas pressure.",
+            "FLiBe is the supported fluid selector inherited from primary_loop.json and maps to the built-in FLiBe_UF4 property model. Those properties approximate the PSAR 67LiF-28BeF2-5UF4 fuel salt; exact composition-dependent properties are not supplied."
+        ],
+        "omissions": [
+            "No RAV, tank components, cover gas, drain branches, secondary loop, radiator, graphite or steel heat capacity, spatial neutronics, point kinetics, decay heat, or pump-coastdown transient."
+        ],
+        "limits": "This input is a thermal-hydraulic surrogate. The PSAR 923.15 K maximum temperature is documented, not enforced by a controller. Assumed geometry, pump head, HX area and wall temperature require calibration for quantitative PSAR reproduction.",
+        "execution": "Use the Python frontend to export HDF5, then the C++ syTH solver: python3 -m syth.syTH PSAR.json --h5write; syTH.exe PSAR.h5 PSAR-results.h5. PressureReferenceBC is not implemented in the installed pure-Python solver."
+    },
+    "components": {
+        "pipe": {
+            "Lower Plenum": {
+                "L": 0.2,
+                "R": 0.43667582484194234,
+                "n": 2,
+                "theta": 0.0
+            },
+            "Upper Plenum": {
+                "L": 0.2,
+                "R": 0.43667582484194234,
+                "n": 2,
+                "theta": 0.0
+            },
+            "Hot Riser": {
+                "L": 1.1,
+                "R": 0.02949,
+                "n": 6,
+                "theta": 0.0
+            },
+            "Hot Leg": {
+                "L": 0.7,
+                "R": 0.02949,
+                "n": 4,
+                "theta": 90.0,
+                "alpha": 0.0
+            },
+            "Cold Downcomer": {
+                "L": 3.0168,
+                "R": 0.02949,
+                "n": 12,
+                "theta": 180.0
+            },
+            "Cold Return": {
+                "L": 2.55829,
+                "R": 0.02949,
+                "n": 10,
+                "theta": 90.0,
+                "alpha": 180.0
+            }
+        },
+        "pump": {
+            "Fuel Pump": {
+                "V": 0.005,
+                "Ac": 0.0027321177812801647,
+                "Dh": 0.05898,
+                "height": 0.0
+            }
+        },
+        "simple_hx": {
+            "Heat Exchanger": {
+                "length": 1.8288,
+                "shell_volume": 0.04567002080684252,
+                "effective_heated_area": 30.0,
+                "n": 12,
+                "theta": 90.0,
+                "alpha": 0.0
+            }
+        },
+        "nozzle": {
+            "Loop Closure": {
+                "L": 1e-64,
+                "R_inlet": 0.02949,
+                "R_outlet": 0.43667582484194234,
+                "theta": 90.0,
+                "alpha": 180.0
+            }
+        },
+        "hex_core": {
+            "Core": {
+                "pitch": 0.1016,
+                "components": {
+                    "serial_components": {
+                        "1": {
+                            "components": {
+                                "pipe": {
+                                    "Fuel Channel": {
+                                        "L": 1.5168,
+                                        "R": 0.01508,
+                                        "n": 16,
+                                        "theta": 0.0,
+                                        "comment": "Single explicit fuel channel: 3.016 cm diameter, 1.5168 m active height, 16 axial cells (Table 4.2-1)."
+                                    }
+                                }
+                            },
+                            "order": [
+                                "Fuel Channel"
+                            ]
+                        }
+                    }
+                },
+                "channel_map": [
+                    ["1", "1", "1", "1"],
+                    ["1", "1", "1", "1", "1", "1", "1"],
+                    ["1", "1", "1", "1", "1", "1", "1", "1", "1", "1"],
+                    ["1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1"],
+                    ["1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1"],
+                    ["1", "1", "1", "1", "1", "1", "0", "1", "1", "1", "1", "1", "1"],
+                    ["1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1"],
+                    ["1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1"],
+                    ["1", "1", "1", "1", "0", "1", "1", "0", "1", "1", "1", "1"],
+                    ["1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1"],
+                    ["1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1"],
+                    ["1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1"],
+                    ["1", "1", "1", "1", "1", "1", "1", "1", "1", "1"],
+                    ["1", "1", "1", "1", "1", "1", "1"],
+                    ["1", "1", "1", "1"]
+                ],
+                "non_channels": [
+                    "0"
+                ],
+                "lower_plenum": {
+                    "pipe": {
+                        "R": 0.43667582484194234,
+                        "L": 1e-64,
+                        "n": 1,
+                        "theta": 0.0
+                    }
+                },
+                "upper_plenum": {
+                    "pipe": {
+                        "R": 0.43667582484194234,
+                        "L": 1e-64,
+                        "n": 1,
+                        "theta": 0.0
+                    }
+                },
+                "comment": "148 explicit parallel fuel channels in a simplified hexagonal lattice. Required internal plenums are negligible-length connectors; finite Lower Plenum and Upper Plenum components remain in the loop. The three zero entries are omitted lattice sites, not resolved control-rod thimbles."
+            }
+        }
+    },
+    "controllers": {
+        "bodyForce": {
+            "Core Heat Source": {
+                "eq": "enthalpy",
+                "value": "97943875.825148076 * cos(pi * (z / 1.5168 - 0.5))"
+            },
+            "Pump Momentum": {
+                "eq": "momentum",
+                "value": 39662.81
+            }
+        },
+        "wallFunction": {
+            "HX Wall Function": {
+                "eq": "enthalpy",
+                "value": 832.0
+            }
+        }
+    },
+    "system": {
+        "simple_loop": {
+            "loop": [
+                {
+                    "component": "Lower Plenum"
+                },
+                {
+                    "component": "Core",
+                    "BodyForces": [
+                        "Core Heat Source"
+                    ]
+                },
+                {
+                    "component": "Upper Plenum"
+                },
+                {
+                    "component": "Hot Riser"
+                },
+                {
+                    "component": "Fuel Pump",
+                    "BodyForces": [
+                        "Pump Momentum"
+                    ]
+                },
+                {
+                    "component": "Hot Leg"
+                },
+                {
+                    "component": "Heat Exchanger",
+                    "WallFunctions": [
+                        "HX Wall Function"
+                    ]
+                },
+                {
+                    "component": "Cold Downcomer"
+                },
+                {
+                    "component": "Cold Return"
+                },
+                {
+                    "component": "Loop Closure"
+                }
+            ],
+            "fluid": "FLiBe",
+            "boundary_conditions": {
+                "pressure_ref": {
+                    "boundary_type": "PressureReferenceBC",
+                    "surface": 0,
+                    "variable": "pressure",
+                    "value": 150000.0
+                }
+            }
+        }
+    },
+    "states": [
+    {},
+    {"transient": {
+                "time_duration": 200.00,
+                "time_step": 2.0,
+                "scheme": "BDF1",
+                "save_all_data": false
+      }
+    },
+    {"transient": {
+                "time_duration": 125.00,
+                "time_step": 0.05,
+                "scheme": "BDF1",
+                "save_all_data": false
+      },
+      "bodyForce": {
+          "Pump Momentum": "5e3 * exp(-t/5)"
+      }
+    }
+    ],
+    "units": {
+        "length": "m",
+        "time": "s",
+        "pressure": "pa",
+        "massFlowRate": "kg/s",
+        "power": "w",
+        "temperature": "K"
+    },
+    "options": {
+        "auto_nozzle_length": 1e-64,
+        "temperature_initial_value": 873.15,
+        "pressure_initial_value": 150000.0,
+        "momentum_relaxation_scaling_factor": 0.99,
+        "enthalpy_relaxation_scaling_factor": 0.99,
+        "relaxation_recovery_iterations": 10,
+        "write_every_timestep": false,
+        "lofi_neutronics_coupled":false,
+        "neutron_precursor_solve": true
+    }
+}

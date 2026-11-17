@@ -67,7 +67,11 @@ def read_timestep(filepath, timestep_key, state=1):
     dt = _dt(filepath, state=state)
     data = {}
     with h5py.File(filepath, "r") as f:
-        ts = f[f"{_fluid_data_path(state)}/{key}"]
+        group = f[_fluid_data_path(state)]
+        # Accept zero-padded native keys as well as integer caller input.
+        key = next(k for k in group if int(k) == int(key))
+        first_index = min(map(int, group.keys()))
+        ts = group[key]
         for name in SCALAR_DATASETS:
             if name in ts:
                 data[name] = ts[name][()]
@@ -76,7 +80,7 @@ def read_timestep(filepath, timestep_key, state=1):
             data[PRECURSOR_GROUP] = {
                 k: prec_group[k][()] for k in sorted(prec_group.keys())
             }
-        data["time"] = float(int(key)) * dt if dt is not None else None
+        data["time"] = float(int(key) - first_index + 1) * dt if dt is not None else None
     return data
 
 
@@ -125,7 +129,7 @@ def read_solution(filepath, stride=1, start=None, stop=None, state=1):
 
         n = len(selected)
         indices = np.array([int(k) for k in selected], dtype=np.int64)
-        times = indices * dt if dt is not None else None
+        times = (indices - int(all_keys[0]) + 1) * dt if dt is not None else None
 
         # Pre-allocate from first timestep to get shapes
         first = fd1[selected[0]]
@@ -174,8 +178,8 @@ def summarize(filepath, state=1):
         print(f"Timesteps       : {n_ts:,}")
         print(f"Timestep range  : {first_key} – {last_key}")
         if dt is not None:
-            t_start = first_key * dt
-            t_end = last_key * dt
+            t_start = dt
+            t_end = (last_key - first_key + 1) * dt
             print(f"dt              : {dt} s")
             print(f"Time range      : {t_start:.3f} – {t_end:.3f} s")
 
@@ -191,7 +195,7 @@ def summarize(filepath, state=1):
 
 
 def _get_core_nodes(filepath):
-    """Return sorted list of (index, volume) for nodes tagged 'core'."""
+    """Return sorted (index, volume) for tagged or explicitly coupled core nodes."""
 
     def _decode(val):
         if isinstance(val, bytes):
@@ -208,7 +212,9 @@ def _get_core_nodes(filepath):
             if not isinstance(grp, h5py.Group):
                 continue
             tag_ds = grp.get("tag")
-            if tag_ds is None or _decode(tag_ds[()]) != "core":
+            coupled = grp.get("is_coupled")
+            if not ((tag_ds is not None and _decode(tag_ds[()]) == "core")
+                    or (coupled is not None and bool(coupled[()]))):
                 continue
             vol_ds = grp.get("volume")
             if not isinstance(vol_ds, h5py.Dataset):
@@ -251,7 +257,8 @@ def compute_total_core_power(filepath, stride=10, state=1):
             ts = fd1[key]
             power_density = ts["power"][core_indices]
             powers[i] = float(np.dot(power_density, volumes))
-            times[i] = int(key) * dt if dt is not None else float(i * stride)
+            # Native output numbering continues across states; time resets.
+            times[i] = (int(key) - int(all_keys[0]) + 1) * dt if dt is not None else float(i * stride)
 
     return times, powers
 
@@ -402,7 +409,8 @@ def compute_core_averages(filepath, quantities, stride=10, state=1):
 
         for i, key in enumerate(selected):
             ts = fd1[key]
-            times[i] = int(key) * dt if dt is not None else float(i * stride)
+            # Native output numbering continues across states; time resets.
+            times[i] = (int(key) - int(all_keys[0]) + 1) * dt if dt is not None else float(i * stride)
             for q in quantities:
                 results[q][i] = float(ts[q][core_indices].mean())
 
@@ -446,7 +454,8 @@ def compute_total_delayed_source(filepath, stride=10, state=1):
         for i, key in enumerate(selected):
             ts = fd1[key]
             pg = ts[PRECURSOR_GROUP]
-            times[i] = int(key) * dt if dt is not None else float(i * stride)
+            # Native output numbering continues across states; time resets.
+            times[i] = (int(key) - int(all_keys[0]) + 1) * dt if dt is not None else float(i * stride)
             total = 0.0
             for j, name in enumerate(prec_names):
                 core_mean = float(pg[name][core_indices].mean())

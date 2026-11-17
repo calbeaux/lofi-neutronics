@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from Coupling.core_geometry import CoreGeometry
 
 
 class NeutronicsStrategy(ABC):
@@ -38,11 +39,13 @@ class NeutronicsStrategy(ABC):
         """
         Sets the core nodes for the neutronics strategy.
         """
-        self._core_nodes = core_nodes
+        self.core = CoreGeometry.from_nodes(core_nodes)
+        self._core_nodes = self.core.nodes
+        self._axial_nodes = self.core.center_channel
 
     @property
     def core_volume(self):
         """
         Returns the total volume of the core.
         """
-        return sum(node.volume for node in self._core_nodes)
+        return self.core.volume

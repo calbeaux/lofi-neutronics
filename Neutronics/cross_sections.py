@@ -1,7 +1,9 @@
 class CrossSections:
 
-    def __init__(self, sigma_tr, sigma_a, nu_sigma_f, in_scatter, out_scatter, kappa_f, velocity):
-        cm_to_m = 100.0  # cm^-1 to m^-1 conversion factor
+    def __init__(self, sigma_tr, sigma_a, nu_sigma_f, in_scatter, out_scatter, kappa_f, velocity,
+                 *, sigma_f=None, si=False, radial_buckling_squared=0.0):
+        cm_to_m = 1.0 if si else 100.0
+        self.radial_buckling_squared = radial_buckling_squared
         self.tr = sigma_tr * cm_to_m
         self.a = sigma_a * cm_to_m
         self.nu_f = nu_sigma_f * cm_to_m
@@ -11,7 +13,13 @@ class CrossSections:
         self.d_coef = 1 / (3 * self.tr)
         self.extrapolation_distance = 0.7104 / self.tr
         self.velocity = velocity * 1 / cm_to_m  # m/s, for thermal neutrons
+        self.f = None if sigma_f is None else sigma_f * cm_to_m
 
+
+    @property
+    def radial_leakage(self):
+        """Effective radial removal (1/m), separate from absorption."""
+        return self.d_coef * self.radial_buckling_squared
 
     """
     Both of these class methods recreate cross sections from specifc mpact runs.
@@ -63,7 +71,7 @@ if __name__ == "__main__":
         k_inf = (xs.fast.nu_f + (xs.fast.s_out / xs.th.a) * xs.th.nu_f) / (xs.fast.a + xs.fast.s_out)
         rho = (k_inf - 1) / k_inf
         rhos.append(rho)
-        # print(f"Calculated k_inf: {k_inf}")
+        print(f"Calculated k_inf: {k_inf}")
         # thermal_kappa = 2.43 *self.th.kappa_f / self.th.nu_f
         # fast_kappa = 2.43 * self.fast.kappa_f / self.fast.nu_f
         # print(f"Calculated thermal kappa: {thermal_kappa}")

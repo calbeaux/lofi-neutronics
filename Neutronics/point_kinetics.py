@@ -22,13 +22,15 @@ class PointKineticsStrategy(NeutronicsStrategy):
     def __init__(
         self,
         core_nodes,
-        mean_neutron_lifetime,
-        beta_effective,
-        alpha_t,
-        initial_power,
-        substep,
+        mean_neutron_lifetime=None,
+        beta_effective=None,
+        alpha_t=None,
+        initial_power=1.0,
+        substep=1,
+        library=None,
     ):
-        self._core_nodes = core_nodes
+        self.library = library
+        super().set_core_nodes(core_nodes)
         self._mean_neutron_lifetime = mean_neutron_lifetime
         self._beta_effective = beta_effective
         self._modified_beta_effective = beta_effective
@@ -36,17 +38,66 @@ class PointKineticsStrategy(NeutronicsStrategy):
         self._initial_power = initial_power
         self._total_power = initial_power
         self._substeps = substep if substep is not None and substep > 0 else 1
-        self._t0 = None
         self._precursor_source = None
         self._temperature = None
         self._power = None
+        self._reset_core_state()
+
+    def _reset_core_state(self):
+        self._t0 = None
         self._solver = None
         self._amplitude = 1.0
-        self._flux_shape = _build_profile(self._FLUX_PARAMETERS, len(self._core_nodes))
-        self._adjoint = _build_profile(self._ADJOINT_PARAMETERS, len(self._core_nodes))
+        self._total_power = self._initial_power
+        self._flux_shape = _build_profile(self._FLUX_PARAMETERS, len(self._axial_nodes))
+        self._adjoint = _build_profile(self._ADJOINT_PARAMETERS, len(self._axial_nodes))
         self._adjoint /= np.sum(self._adjoint) / len(self._adjoint)
-        self._n_0 = 2.43 * self._mean_neutron_lifetime * initial_power / (3.24e-11)
+        self._generation_time = self._mean_neutron_lifetime  # legacy convention
+        self._n_0 = (2.43 * self._mean_neutron_lifetime * self._initial_power
+                     * self._center_power_fraction() / 3.24e-11
+                     if self.library is None else None)
         self._rho_0 = 0.0
+        self._reference_rho = None
+        self._reference_initialized = False
+
+    def _center_power_fraction(self):
+        volumes = np.array([n.volume for n in self._axial_nodes])
+        return (self._flux_shape @ volumes) / (self._flux_shape @ self.core.axial_volumes)
+
+    def set_core_nodes(self, core_nodes):
+        super().set_core_nodes(core_nodes)
+        self._reset_core_state()
+
+    def initialize_reference(self):
+        if self.library is None or self._reference_initialized:
+            return
+        volumes = np.array([n.volume for n in self._axial_nodes])
+        temperatures = np.array([self._temperature[n.index] for n in self._axial_nodes])
+        initial_temperature = np.average(temperatures, weights=volumes)
+        self._flux_shape, self._adjoint = self.library.profiles(initial_temperature).map_nodes(self._axial_nodes)
+        self._t0 = self.get_core_temperature()
+        kinetics = self.library.kinetics(self._t0)
+        self._reference_rho = kinetics.rho
+        self._n_0 = kinetics.generation_time * kinetics.neutrons_per_joule * self._initial_power * self._center_power_fraction()
+        self._reference_initialized = True
+        self._refresh_kinetics()
+        self.set_initial_reactivity(
+            self.beta_effective - self.get_core_precursor_sum() * self.generation_time)
+
+    def _refresh_kinetics(self):
+        if self.library is not None:
+            kinetics = self.library.kinetics(self.get_core_temperature())
+            self._generation_time = kinetics.generation_time
+            self._mean_neutron_lifetime = kinetics.neutron_lifetime
+            self._beta_effective = kinetics.beta_effective
+            self._alpha_t = kinetics.alpha_T
+
+    @property
+    def generation_time(self):
+        return self._generation_time
+
+    def fission_power_factor(self):
+        """Fissions/J for SyTH's existing global power-to-source interface."""
+        return self.library.kinetics(self.get_core_temperature()).fissions_per_joule
 
     @property
     def total_power(self):
@@ -68,7 +119,8 @@ class PointKineticsStrategy(NeutronicsStrategy):
         self._rho_0 = rho
 
     def update_initial_temperature(self):
-        self._t0 = self.get_core_average(self._temperature)
+        if self.library is None:
+            self._t0 = self.get_core_average(self._temperature)
 
     def set_solver_method(self, state):
         solver_type = state.state_type
@@ -95,47 +147,48 @@ class PointKineticsStrategy(NeutronicsStrategy):
         return self.get_core_average(self._temperature)
 
     def get_core_average(self, data):
+        if self.library is not None:
+            weights = self._adjoint * np.array([n.volume for n in self._axial_nodes])
+            return np.average([data[n.index] for n in self._axial_nodes], weights=weights)
         average = 0.0
-        for index, node in enumerate(self._core_nodes):
+        for index, node in enumerate(self._axial_nodes):
             average += data[node.index] * self._adjoint[index] / sum(self._adjoint)
         return average
 
     def get_reactivity_feedback(self):
         core_temp = self.get_core_average(self._temperature)
+        if self.library is not None:
+            return self.library.kinetics(core_temp).rho - self._reference_rho + self._rho_0
         return self._alpha_t * (core_temp - self._t0) + self._rho_0
 
     def update_power(self):
+        self.initialize_reference()
+        self._refresh_kinetics()
         self._amplitude = self._solver.get_new_amplitude()
         self._total_power = self._amplitude * self._initial_power
 
-        node_volumes = np.array([node.volume for node in self._core_nodes])
-        normalization = np.sum(self._flux_shape * node_volumes)
-
-        for index, node in enumerate(self._core_nodes):
-            self._power[node.index] = self._total_power * self._flux_shape[index] / normalization
+        normalization = self._flux_shape @ self.core.axial_volumes
+        self.core.broadcast(self._total_power * self._flux_shape / normalization, self._power)
 
         print(f"Total power: {self._total_power}")
-        delivered = sum(
-            self._power[node.index] * node.volume for node in self._core_nodes
-        )
-        assert (
-            abs(delivered - self._total_power) < 1e-6 * self._total_power
-        ), f"Power not conserved: {delivered} vs {self._total_power}"
+        delivered = sum(self._power[n.index] * n.volume for n in self._core_nodes)
+        assert np.isclose(delivered, self._total_power, rtol=1e-6, atol=1e-12), (
+            f"Power not conserved: {delivered} vs {self._total_power}")
 
     def get_core_precursor_sum(self):
         total = 0.0
-        for index, node in enumerate(self._core_nodes):
+        for index, node in enumerate(self._axial_nodes):
             total += self._precursor_source[node.index] * self._adjoint[index]
         return total / self._n_0
 
     def calculate_solution(self):
         total = 0.0
-        for node in self._core_nodes:
+        for node in self._axial_nodes:
             total += (
                 node.volume
                 * self._power[node.index]
                 * self._beta_effective
-                / (self.mean_neutron_lifetime * self._initial_power)
+                / (self.generation_time * self._initial_power * self._center_power_fraction())
             )
         return total
 
@@ -152,8 +205,15 @@ class PointKineticsSteadyStateStrategy(PointKineticsSolverStrategy):
 
     def get_new_amplitude(self):
         self._pk.update_initial_temperature()
+        # Balance the full transient equation at amplitude=1. The library
+        # reference predates thermal convergence, so its accumulated feedback
+        # must be included in the steady-state reactivity offset.
+        feedback = (self._pk.library.kinetics(self._pk.get_core_temperature()).rho
+                    - self._pk._reference_rho
+                    if self._pk.library is not None else 0.0)
         self._pk.set_initial_reactivity(
-            - self._pk.get_core_precursor_sum() * self._pk.mean_neutron_lifetime + self._pk.beta_effective
+            - self._pk.get_core_precursor_sum() * self._pk.generation_time + self._pk.beta_effective
+            - feedback
         )
         print(f"calculate solution: {self._pk.calculate_solution()}")
         return 1.0
@@ -167,11 +227,11 @@ class PointKineticsTransientStrategy(PointKineticsSolverStrategy):
     def get_new_amplitude(self):
         gamma = (
             self._pk.get_reactivity_feedback() - self._pk.beta_effective
-        ) / self._pk.mean_neutron_lifetime
+        ) / self._pk.generation_time
         pc_sum = self._pk.get_core_precursor_sum()
-        new_amplitude = (self._pk.amplitude + pc_sum / gamma) * np.exp(
-            gamma * self._dt
-        ) - pc_sum / gamma
+        z = gamma * self._dt
+        source_integral = self._dt if z == 0 else self._dt * np.expm1(z) / z
+        new_amplitude = self._pk.amplitude * np.exp(z) + pc_sum * source_integral
         print(f"rho: {self._pk.get_reactivity_feedback()}")
         print(
             "Core temperature:",
@@ -181,10 +241,10 @@ class PointKineticsTransientStrategy(PointKineticsSolverStrategy):
         )
         core_avg_temp = 0.0
         total_core_precursors = 0.0
-        for index, node in enumerate(self._pk._core_nodes):
+        for index, node in enumerate(self._pk._axial_nodes):
             core_avg_temp += self._pk._temperature[node.index]
             total_core_precursors += self._pk._precursor_source[node.index]
-        print(f"core average temperature: {core_avg_temp/len(self._pk._core_nodes)}")
+        print(f"core average temperature: {core_avg_temp/len(self._pk._axial_nodes)}")
         print(f"mean neutron lifetime: {self._pk.mean_neutron_lifetime}")
         print(f"beta effective: {self._pk.beta_effective}")
         print(f"Gamma: {gamma}")
@@ -223,7 +283,7 @@ class PointKineticsNumericalTransientStrategy(PointKineticsSolverStrategy):
     def get_new_amplitude(self):
         gamma = (
             self._pk.get_reactivity_feedback() - self._pk.beta_effective
-        ) / self._pk.mean_neutron_lifetime
+        ) / self._pk.generation_time
         pc_sum = self._pk.get_core_precursor_sum()
         n_old = self._pk.amplitude
         theta = self._theta

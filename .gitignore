@@ -21,3 +21,7 @@ build/*
 .vscode/*
 
 input_files/*.h5
+
+# Local results and scripts
+/results/
+/scripts/

@@ -1,9 +1,12 @@
 import ctypes
+import os
 
-# _lib_path = os.path.join(os.path.dirname(__file__), "lib", "libsyth.so")
-_lib = ctypes.CDLL("/root/syth/build/syTH/syTH_driver/libsyTH.so")
-
-SYTH_API_VERSION = 1  # match C++ macro
+_lib = ctypes.CDLL(
+    "/root/syth/build/syTH/syTH_driver/libsyTH.so",
+    mode=os.RTLD_NOW | os.RTLD_LOCAL | os.RTLD_DEEPBIND,
+)
+SYTH_API_VERSION = 2  # match syTH_Coupling_Interface.cpp
+# IntrType.h: DBL enabled, DBLINT disabled in the supported SyTH build.
 SRK = ctypes.c_double
 SIK = ctypes.c_int
 
@@ -53,19 +56,25 @@ syTH_setNodeFissionRxRate = _bind_void_function(
 syTH_addNodePower = _bind_void_function(
     "syTH_addNodePower", [ctypes.c_int, ctypes.c_double]
 )
-syTH_setNeutronPrecursorSourceCoupledToPowerFactor = _bind_void_function(
-    "syTH_setNeutronPrecursorSourceCoupledToPowerFactor", [ctypes.c_double]
+syTH_setPrecursorSourcePerPower = _bind_void_function(
+    "syTH_setPrecursorSourcePerPower", [ctypes.c_double]
 )
 
 syTH_setSpeciesSource = _bind_void_function(
     "syTH_setSpeciesSource", [ctypes.c_int, ctypes.c_int, ctypes.c_double]
+)
+syTH_stagePreviousConcentration = _bind_void_function(
+    "syTH_stagePreviousConcentration",
+    [ctypes.c_int, ctypes.c_int, ctypes.c_double],
 )
 syTH_setSpeciesDecayConstant = _bind_void_function(
     "syTH_setSpeciesDecayConstant", [ctypes.c_int, ctypes.c_double]
 )
 syTH_setBurnup = _bind_void_function("syTH_setBurnup", [ctypes.c_int, ctypes.c_double])
 syTH_setState = _bind_void_function("syTH_setState", [ctypes.c_int])
-syTH_getNodeCount = _bind_void_function("syTH_getNodeCount", [ctypes.POINTER(SIK)])
+syTH_getCoupledNodeCount = _bind_void_function(
+    "syTH_getCoupledNodeCount", [ctypes.POINTER(SIK)]
+)
 syTH_getNodeBounds = _bind_void_function(
     "syTH_getNodeBounds", [ctypes.c_int, ctypes.POINTER(SRK)]
 )
@@ -110,6 +119,9 @@ syTH_getPressureDifferential = _bind_void_function(
 syTH_getSpecies = _bind_void_function(
     "syTH_getSpecies", [ctypes.c_int, ctypes.c_int, ctypes.POINTER(SRK)]
 )
-syTH_getTotalDelayedNeutronSources = _bind_void_function(
-    "syTH_getTotalDelayedNeutronSources", [ctypes.c_int, ctypes.POINTER(SRK)]
+syTH_getDelayedNeutronEmissions = _bind_void_function(
+    "syTH_getDelayedNeutronEmissions", [ctypes.c_int, ctypes.POINTER(SRK)]
+)
+syTH_getFirstCoupledNode = _bind_void_function(
+    "syTH_getFirstCoupledNode", [ctypes.POINTER(SIK)]
 )
