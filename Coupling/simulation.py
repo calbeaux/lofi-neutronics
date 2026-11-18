@@ -37,6 +37,7 @@ class Simulation:
         self._run_null = bool(
             self._input_dict.get("neutronics", {}).get("null_transient", False)
         )
+        self._initial_power = self._input_dict.get("neutronics", {}).get("initial_power", 1e6)
         self._neutronics = Simulation._build_neutronics_strategy(
             self._input_dict, self.core, library=self.library
         )
