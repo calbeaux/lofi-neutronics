@@ -175,6 +175,7 @@ class Simulation:
                 initial_power,
                 substeps,
                 library=library,
+                radial_shape=neutronics_dict.get("radial_shape"),
             )
 
         if strategy_type == "diffusion":
@@ -187,7 +188,8 @@ class Simulation:
             substeps = neutronics_dict.get("substeps", neutronics_dict.get("substep"))
 
             return Diffusion(core_nodes, initial_power, substeps, beta_effective, library=library,
-                             radial_buckling=neutronics_dict.get("radial_buckling", False))
+                             radial_buckling=neutronics_dict.get("radial_buckling", False),
+                             radial_shape=neutronics_dict.get("radial_shape"))
 
         raise ValueError(f"Unsupported neutronics strategy type: {strategy_type!r}")
 

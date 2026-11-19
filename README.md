@@ -242,3 +242,78 @@ correction represents radial leakage, not a radial power shape.
 Run `python scripts/compare_temperature_feedback.py` to export the buckling
 table, sample matching errors, and corrected temperature-feedback plots under
 `results/temperature_feedback/`. This analysis does not alter saved HDF5 runs.
+
+### Fixed MPACT radial heating shape
+
+Both PSAR JSON inputs enable `neutronics.radial_shape`. The extracted MPACT option is:
+
+```json
+"radial_shape": {
+  "type": "mpact_radius",
+  "reference_temperature": 873.15,
+  "assembly_pitch_m": [0.0508, 0.04399409051225]
+}
+```
+
+Omit this object to retain the previous representative-channel behavior. The
+option requires an MPACT library and bounded channel geometry. Assembly pitches
+are physical dimensions from the MPACT deck; they are not inferred from map
+indices. The mapping assumes the computational rectangular grid and the target
+channel footprint are centered on the same core axis. Azimuthal details are
+averaged out.
+
+The library integrates nodal `KXSF * FLUX` over the fueled axial extent and
+normalizes by fuel volume (`VOL * FUELVOLFRAC`). Four subnodes are collapsed
+within each assembly, then fuel-volume-weighted annular profiles are built.
+Adjacent temperature samples supply the reference profile. Heating and
+`CHID`-weighted adjoint importance profiles are mapped linearly in physical
+radius and frozen. The innermost value extends to the axis and the outermost
+value to the outer annulus edge; channels beyond that support are rejected.
+Radial heating weights have unit volume mean in each axial plane, so neither
+core nor plane power changes when applying the radial distribution. Plenums
+remain unheated.
+
+PK retains its fixed axial shape and uses separable axial/radial importance to
+project temperatures and node-integrated delayed emissions over all channels.
+Its reference neutron population is a whole-core population; importance has
+unit power-weighted mean. The prior axial temperature-weighting convention is
+preserved. Diffusion still solves one axial problem: local material and leakage
+coefficients are collapsed with radial-heating × fuel-volume weights, inverse
+velocities are collapsed before inversion, and precursor emissions are summed
+across channels per plane. Local temperature-dependent buckling is evaluated
+before collapsing `D * B²`. These are fixed-shape radial projections, not a
+multidimensional diffusion calculation or evolving radial redistribution.
+
+Run `python scripts/inspect_radial_shape.py` from the repository root to export
+profiles, channel heating maps, conservation checks, and separate solution-free
+`psar_pk_radial.h5` / `psar_diffusion_radial.h5` inputs under
+`results/radial_shape/`. Existing simulation HDF5 files are not modified.
+The exported inputs retain the JSON's MPACT paths; adjust those paths when
+running inside Docker or on a different machine. Full coupled transients must
+be run separately to assess the resulting channel temperatures.
+
+### Smooth cosine radial heating
+
+The PSAR inputs currently select `"type": "cosine"` with `"peak": 1.3` and
+`"edge": 0.6`, retaining the same `reference_temperature` and
+`assembly_pitch_m` entries. This changes heating only; the MPACT radial adjoint
+importance profile and all-channel feedback projections are retained.
+
+The fixed heating profile is
+
+```text
+w(r) = edge + (peak - edge) * cos((pi/2) * (r/R)^p)
+```
+
+Here R is the largest channel-center radius. The exponent p is fitted once to
+make the fuel-volume-weighted mean equal one while preserving both endpoint
+values. Thus the profile is cosine-shaped rather than a strictly linear-radius
+cosine. It decreases smoothly from the requested center peak to the edge;
+plane-wise volume normalization still guarantees conservation for unequal
+channel volumes. Geometries that cannot realize unit mean with the requested
+endpoints are rejected. Omit the radial_shape object for equal channel weights,
+or select `mpact_radius` to restore the extracted profile.
+
+Run `python scripts/inspect_radial_shape.py --output results/cosine_radial_shape`
+to create the cosine plot, checks, and separate rerun inputs without overwriting
+the previous radial-profile artifacts.

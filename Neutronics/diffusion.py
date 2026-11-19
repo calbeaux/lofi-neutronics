@@ -5,12 +5,13 @@ from scipy.linalg import eigvals
 from scipy.optimize import brentq
 
 from Coupling.core_geometry import CoreGeometry
+from Neutronics.radial_shape import RadialShape
 from Neutronics.cross_sections import XSSet
 from Neutronics.neutronics_strategy import NeutronicsStrategy
 
 
 class Diffusion(NeutronicsStrategy):
-    def __init__(self, core_nodes, initial_power, substep=1, beta=None, library=None, *, radial_buckling=False):
+    def __init__(self, core_nodes, initial_power, substep=1, beta=None, library=None, *, radial_buckling=False, radial_shape=None):
         if library is None and beta is None:
             raise ValueError(
                 "Diffusion requires an MPACT library or beta_effective. "
@@ -22,6 +23,7 @@ class Diffusion(NeutronicsStrategy):
             raise ValueError("radial_buckling must be a boolean.")
         if radial_buckling and library is None:
             raise ValueError("radial_buckling requires an MPACT library.")
+        self._radial_config = radial_shape
         self.radial_buckling = radial_buckling
         self.library = library
         self.set_core_nodes(core_nodes)
@@ -47,7 +49,11 @@ class Diffusion(NeutronicsStrategy):
         core = CoreGeometry.from_nodes(core_nodes)
         core.validate_diffusion()
         self._buckling_table = None
+        self._radial_xs_cache = {}
+        self._radial_beta_cache = {}
         super().set_core_nodes(core)
+        self.radial = (RadialShape(self.core, self.library, self._radial_config)
+                       if self._radial_config is not None else None)
         self._ncell = len(self._axial_nodes)
         self.flux = np.ones(2 * self._ncell) * 1e8
         self.k_eff = 1.0
@@ -75,6 +81,15 @@ class Diffusion(NeutronicsStrategy):
         self._power = data_container.register("power", 0.0)
 
     def get_xs(self, node):
+        if self.radial is not None:
+            i = self.core.axial_index[node.index]
+            temperatures = tuple(self._temperature[self.radial.indices[:,i]])
+            cached = self._radial_xs_cache.get(i)
+            if cached is None or cached[0] != temperatures:
+                value = self.radial.collapse_xs(i, self._temperature, self.library,
+                                               self.buckling_squared)
+                self._radial_xs_cache[i] = (temperatures, value)
+            return self._radial_xs_cache[i][1]
         if self.library is not None:
             temperature = self._temperature[node.index]
             return self.library.cross_sections(
@@ -155,6 +170,16 @@ class Diffusion(NeutronicsStrategy):
         self._buckling_table = np.array(fitted)
 
     def get_beta(self, node):
+        if self.radial is not None:
+            i = self.core.axial_index[node.index]
+            weights = self.radial.weights[:,i]*self.radial.volumes[:,i]
+            temperatures = tuple(self._temperature[self.radial.indices[:,i]])
+            cached = self._radial_beta_cache.get(i)
+            if cached is None or cached[0] != temperatures:
+                value = np.average([self.library.kinetics(t).beta_effective
+                                    for t in temperatures], weights=weights)
+                self._radial_beta_cache[i] = (temperatures, value)
+            return self._radial_beta_cache[i][1]
         if self.library is not None:
             return self.library.kinetics(self._temperature[node.index]).beta_effective
         return self._beta
@@ -171,11 +196,21 @@ class Diffusion(NeutronicsStrategy):
             raise ValueError("Cannot normalize a nonpositive fission power.")
         return fissions / power
 
+    def projected_precursor_source(self, node):
+        if self.radial is None:
+            return self._precursor_source[node.index]
+        i = self.core.axial_index[node.index]
+        return (self._precursor_source[self.radial.indices[:,i]].sum()
+                / self.core.axial_volumes[i] * node.volume)
+
     def total_precursor_sum(self):
         return sum(
-            self._precursor_source[node.index] * (node.length / node.volume) for node in self._axial_nodes
+            self.projected_precursor_source(node) * (node.length / node.volume) for node in self._axial_nodes
         )
     def get_core_temperature(self):
+        if self.radial is not None:
+            return np.average(self._temperature[self.radial.indices],
+                              weights=self.radial.volumes)
         return sum(
             self._temperature[node.index] * node.volume for node in self._axial_nodes
         ) / sum(n.volume for n in self._axial_nodes)
@@ -197,7 +232,7 @@ class Diffusion(NeutronicsStrategy):
             return 0.0 if total_fission else self.get_beta(node)
 
         def get_source(node):
-            return 0.0 if total_fission else self._precursor_source[node.index]
+            return 0.0 if total_fission else self.projected_precursor_source(node)
 
         matrix_a = np.zeros((2 * self._ncell, 2 * self._ncell))
         vector_b = np.zeros(2 * self._ncell)
@@ -369,7 +404,7 @@ class Diffusion(NeutronicsStrategy):
             self.flux *= self.normalization_factor
             total_power *= self.normalization_factor
             axial_power *= self.normalization_factor
-        self.core.broadcast(axial_power, self._power)
+        self.core.broadcast(axial_power, self._power, self.radial)
         self.total_power = total_power
 
         print(f"Total power: {total_power}")

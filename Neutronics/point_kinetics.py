@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 
+from Neutronics.radial_shape import RadialShape
 from Neutronics.neutronics_strategy import NeutronicsStrategy
 
 
@@ -28,7 +29,9 @@ class PointKineticsStrategy(NeutronicsStrategy):
         initial_power=1.0,
         substep=1,
         library=None,
+        radial_shape=None,
     ):
+        self._radial_config = radial_shape
         self.library = library
         super().set_core_nodes(core_nodes)
         self._mean_neutron_lifetime = mean_neutron_lifetime
@@ -44,6 +47,8 @@ class PointKineticsStrategy(NeutronicsStrategy):
         self._reset_core_state()
 
     def _reset_core_state(self):
+        self.radial = (RadialShape(self.core, self.library, self._radial_config)
+                       if self._radial_config is not None else None)
         self._t0 = None
         self._solver = None
         self._amplitude = 1.0
@@ -60,6 +65,8 @@ class PointKineticsStrategy(NeutronicsStrategy):
         self._reference_initialized = False
 
     def _center_power_fraction(self):
+        if self.radial is not None:
+            return 1.0
         volumes = np.array([n.volume for n in self._axial_nodes])
         return (self._flux_shape @ volumes) / (self._flux_shape @ self.core.axial_volumes)
 
@@ -72,7 +79,8 @@ class PointKineticsStrategy(NeutronicsStrategy):
             return
         volumes = np.array([n.volume for n in self._axial_nodes])
         temperatures = np.array([self._temperature[n.index] for n in self._axial_nodes])
-        initial_temperature = np.average(temperatures, weights=volumes)
+        initial_temperature = (self.radial.reference_temperature if self.radial is not None
+                               else np.average(temperatures, weights=volumes))
         self._flux_shape, self._adjoint = self.library.profiles(initial_temperature).map_nodes(self._axial_nodes)
         self._t0 = self.get_core_temperature()
         kinetics = self.library.kinetics(self._t0)
@@ -146,7 +154,15 @@ class PointKineticsStrategy(NeutronicsStrategy):
     def get_core_temperature(self):
         return self.get_core_average(self._temperature)
 
+    def _full_importance(self):
+        importance = self.radial.importance * self._adjoint[None,:]
+        heating = self.radial.weights * self._flux_shape[None,:] * self.radial.volumes
+        return importance / (np.sum(importance*heating)/heating.sum())
+
     def get_core_average(self, data):
+        if self.radial is not None:
+            return np.average(data[self.radial.indices],
+                              weights=self._full_importance()*self.radial.volumes)
         if self.library is not None:
             weights = self._adjoint * np.array([n.volume for n in self._axial_nodes])
             return np.average([data[n.index] for n in self._axial_nodes], weights=weights)
@@ -168,7 +184,7 @@ class PointKineticsStrategy(NeutronicsStrategy):
         self._total_power = self._amplitude * self._initial_power
 
         normalization = self._flux_shape @ self.core.axial_volumes
-        self.core.broadcast(self._total_power * self._flux_shape / normalization, self._power)
+        self.core.broadcast(self._total_power * self._flux_shape / normalization, self._power, self.radial)
 
         print(f"Total power: {self._total_power}")
         delivered = sum(self._power[n.index] * n.volume for n in self._core_nodes)
@@ -176,6 +192,8 @@ class PointKineticsStrategy(NeutronicsStrategy):
             f"Power not conserved: {delivered} vs {self._total_power}")
 
     def get_core_precursor_sum(self):
+        if self.radial is not None:
+            return np.sum(self._precursor_source[self.radial.indices]*self._full_importance())/self._n_0
         total = 0.0
         for index, node in enumerate(self._axial_nodes):
             total += self._precursor_source[node.index] * self._adjoint[index]
@@ -183,7 +201,8 @@ class PointKineticsStrategy(NeutronicsStrategy):
 
     def calculate_solution(self):
         total = 0.0
-        for node in self._axial_nodes:
+        nodes = self._core_nodes if self.radial is not None else self._axial_nodes
+        for node in nodes:
             total += (
                 node.volume
                 * self._power[node.index]

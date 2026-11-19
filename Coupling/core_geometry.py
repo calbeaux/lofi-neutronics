@@ -77,7 +77,10 @@ class CoreGeometry:
         if not np.allclose(lengths, lengths[0], rtol=1e-8, atol=1e-10):
             raise ValueError("The diffusion solver requires a uniform axial mesh.")
 
-    def broadcast(self, axial_values, target):
+    def broadcast(self, axial_values, target, radial_shape=None):
         """Write axial power densities into the existing node-indexed array."""
+        if radial_shape is not None:
+            radial_shape.broadcast(axial_values, target)
+            return
         for n in self.nodes:
             target[n.index] = axial_values[self.axial_index[n.index]]
